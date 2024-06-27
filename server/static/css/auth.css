@@ -1,0 +1,32 @@
+html {
+  min-height: 100%;
+  display: grid;
+}
+
+body {
+  margin: auto;
+}
+
+#error, button, input {
+    font-family: courier;
+    font-size: 24px;
+}
+
+#error, button {
+    font-weight: bold;
+}
+
+button {
+    padding: 14px 16px 16px 16px;
+}
+
+input {
+    padding: 16px;
+}
+
+#error {
+    font-family: courier;
+    font-size: 16px;
+    line-height: 0px;
+    color: #ee2222;
+}

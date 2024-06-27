@@ -1,0 +1,4 @@
+**/__pycache__/
+**/farm.yml
+.venv/
+.idea/

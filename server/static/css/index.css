@@ -1,0 +1,64 @@
+body {
+    font-family: courier;
+}
+
+table {
+    width: 100%;
+    text-align: center;
+    table-layout: fixed;
+}
+
+td {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.top-bar, .controls {
+    text-align: center;
+}
+
+.controls div {
+    position: relative;
+    left: -40px;
+    display: flex;
+    flex-direction: row;
+    justify-content: center;
+}
+
+.controls input {
+    position: relative;
+    width: 40px;
+    height: 32px;
+    margin: 16px;
+    float: left;
+    z-index: 1;
+}
+
+.controls button {
+    font-size: 24px;
+    background-color: transparent;
+    border-color: transparent;
+    border-radius: 4px;
+    margin: 16px 4px;
+}
+
+.controls button:hover {
+    background-color: #a0c0e0;
+}
+
+.controls button:active {
+    background-color: #79a9d9;
+}
+
+.controls p {
+    line-height: 36px;
+    text-align: center;
+}
+
+th.status, th.lifetime {
+    width: 100px;
+}
+
+th.timestamp, th.submission-timestamp {
+    width: 300px;
+}
