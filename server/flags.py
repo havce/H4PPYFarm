@@ -99,10 +99,11 @@ class FlagStore(Thread):
         self._db.close()
 
     def _mark_expired(self):
+        now = time()
         self._cur.execute(f"""
         UPDATE flags
-        SET status = {EXPIRED}, submission_timestamp = unixepoch('now'), system_message = 'Expired'
-        WHERE status = {PENDING} AND timestamp + ? <= unixepoch('now')
+        SET status = {EXPIRED}, submission_timestamp = {now}, system_message = 'Expired'
+        WHERE status = {PENDING} AND timestamp + ? <= {now}
         """, (FlagStore.FLAG_LIFETIME,))
         self._db.commit()
 

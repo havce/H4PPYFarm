@@ -19,6 +19,7 @@ class Config(object):
     _RANGE = re.compile("{([0-9]*\\.\\.[0-9]*)}")
 
     def __init__(self):
+        self._cfg_file = None
         try:
             with open("farm.yml", "r") as f:
                 try:
@@ -40,9 +41,9 @@ class Config(object):
         return val
 
     def _get_cfg(self, key):
-        if self._cfg_file is None:
-            self._load_cfg()
-        return self._cfg_file.get(key.replace("_", "-"))
+        if self._cfg_file:
+            return self._cfg_file.get(key.replace("_", "-"))
+        return None
 
     def _get_param(self, key) -> str | int:
         for fn in [self._get_env, self._get_cfg]:
