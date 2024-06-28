@@ -7,7 +7,7 @@ from time import time, sleep
 from requests import Session
 from requests import ConnectionError
 from json import JSONDecodeError
-from subprocess import run as run_process, CalledProcessError
+from subprocess import run as run_process, CalledProcessError, TimeoutExpired
 from concurrent.futures import ThreadPoolExecutor
 
 cfg = {}
@@ -105,13 +105,18 @@ def run_exploit(team: str) -> list | None:
     try:
         flag_format = cfg["flag_format"]
         exploit = cfg["exploit"]
-        output = run_process([exploit, team], capture_output=True).stdout.decode()
+        output = run_process([exploit, team], capture_output=True, timeout=10).stdout.decode()
         run_flags = flag_format.findall(output)
         if len(run_flags) == 0:
-            print(f"Got no flag for team {team}")
-        return run_flags
+            print(f"Got no flags for team {team}")
+        else:
+            print(f"Got {len(run_flags)} flags from team {team}")
+            ts = time()
+            return list(map(lambda x: {"flag": x, "ts": ts}, run_flags))
     except CalledProcessError:
         print(f"Exploit crashed on team {team}!")
+    except TimeoutExpired:
+        print(f"Exploit timed-out on team {team}!")
     return None
 
 
@@ -160,7 +165,7 @@ def send_flags(session: Session):
 
 
 def main():
-    n_workers = 4
+    n_workers = os.cpu_count()
     wait_time = 0
 
     parse_args()
