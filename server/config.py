@@ -32,10 +32,11 @@ class Config(object):
     @staticmethod
     def _get_env(key):
         val = getenv("FARM_" + key.upper())
+        if not val or len(val) == 0:
+            return None
         try:
-            if val:
-                # Try parsing the value as integer
-                val = int(val)
+            # Try parsing the value as integer
+            val = int(val)
         except ValueError:
             pass
         return val
@@ -67,6 +68,10 @@ class Config(object):
         else:
             key = str(key).encode("ASCII")
         return key
+
+    @property
+    def password(self):
+        return str(self._get_param("password"))
 
     @property
     def database(self) -> str:

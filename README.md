@@ -32,7 +32,9 @@ The possible configuration options are:
 | secret_key    | env             | -                 | the secret key used by Flask to encrypt sessions |
 
 > [!NOTE]
-> When passing a configuration option as an environment variable the name of said variable is `FARM_{config_name.upper()}`  
+> When passing a configuration option as:
+> - an environment variable, the name of said variable is `FARM_{config_name.upper()}`  
+> - a YAML entry, the name of said entry is `config_name.replace("_", "-")`
 
 > [!NOTE]
-> Ranges can be specified using `{a..b}`
+> Ranges can be specified using `{a..b}` inclusive

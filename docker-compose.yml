@@ -1,0 +1,20 @@
+version: "3.8"
+
+services:
+  happy-farm:
+    build: ./server
+    image: happy-farm
+    ports:
+      - 8080:8080
+    environment:
+      - FARM_TICK_DURATION=${TICK_DURATION}
+      - FARM_FLAG_LIFETIME=${FLAG_LIFETIME}
+      - FARM_SUBMIT_PERIOD=${SUBMIT_PERIOD}
+      - FARM_BATCH_LIMIT=${BATCH_LIMIT}
+      - FARM_FLAG_FORMAT=${FLAG_FORMAT}
+      - FARM_DATABASE=${DATABASE}
+      - FARM_TEAM_TOKEN=${TEAM_TOKEN}
+      - FARM_SYSTEM_URL=${SYSTEM_URL}
+      - FARM_TEAMS=${TEAMS}
+      - FARM_PASSWORD=${PASSWORD}
+      - FARM_SECRET_KEY=${SECRET_KEY}

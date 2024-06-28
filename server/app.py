@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 
 import json
-from requests.exceptions import JSONDecodeError
 from flask import Flask, request, abort, session, redirect, send_from_directory
 from config import cfg
 from flags import flag_store, flag_submitter
@@ -47,7 +46,7 @@ def flags_put(exp: str = None):
         abort(400)
     try:
         flag_submitter.queue(exp, request.json)
-    except JSONDecodeError:
+    except json.JSONDecodeError:
         abort(400)
     return ""
 
@@ -91,6 +90,6 @@ def config():
 if __name__ == "__main__":
     flag_store.start()
     flag_submitter.start()
-    app.run(port=cfg.port)
+    app.run(host="0.0.0.0", port=cfg.port)
     flag_submitter.join()
     flag_store.join()

@@ -2,3 +2,4 @@
 **/farm.yml
 .venv/
 .idea/
+.env
