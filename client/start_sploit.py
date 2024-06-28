@@ -102,14 +102,12 @@ def check_exploit():
 
 
 def run_exploit(team: str) -> list | None:
-    run_flags = []
     try:
         flag_format = cfg["flag_format"]
         exploit = cfg["exploit"]
         output = run_process([exploit, team], capture_output=True).stdout.decode()
-        while match := flag_format.search(output):
-            run_flags.append(match.group(0))
-        if len(flags) == 0:
+        run_flags = flag_format.findall(output)
+        if len(run_flags) == 0:
             print(f"Got no flag for team {team}")
         return run_flags
     except CalledProcessError:
