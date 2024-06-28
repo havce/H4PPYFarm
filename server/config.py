@@ -7,9 +7,9 @@ from utils import info, warning, error
 defaults = {
     "port": 8080,
     "flag_lifetime": 5,
-    "tick_duration": 60,
-    "submit_period": 2,
-    "batch_limit": 100,
+    "tick_duration": 120,
+    "submit_period": 10,
+    "batch_limit": 1000,
     "database": ":memory:",
     "flag_format": "[A-Z0-9]{31}="
 }
@@ -70,7 +70,7 @@ class Config(object):
         return key
 
     @property
-    def password(self):
+    def password(self) -> str:
         return str(self._get_param("password"))
 
     @property
@@ -80,21 +80,24 @@ class Config(object):
             warning("Using an in-memory database is discouraged!")
         return val
 
+    @property
+    def teams(self) -> list:
+        value = self._get_param("teams")
+        match = Config._RANGE.search(value)
+        if match:
+            assert len(match.groups()) == 1, f"Invalid range '{value}'"
+            (start, end) = match.group(1).split("..")
+            fmt = value
+            values = []
+            try:
+                for i in range(int(start), int(end) + 1):
+                    values.append(Config._RANGE.sub(str(i), fmt))
+                return values
+            except ValueError:
+                assert False, f"Invalid range '{fmt}'"
+
     def __getattr__(self, item):
-        value = self._get_param(item)
-        if isinstance(value, str):
-            match = Config._RANGE.search(value)
-            if match:
-                assert len(match.groups()) == 1, f"Invalid range '{value}'"
-                (start, end) = match.group(1).split("..")
-                fmt = value
-                value = []
-                try:
-                    for i in range(int(start), int(end)+1):
-                        value.append(Config._RANGE.sub(str(i), fmt))
-                except ValueError:
-                    assert False, f"Invalid range '{fmt}'"
-        return value
+        return self._get_param(item)
 
 
 cfg = Config()
