@@ -5,8 +5,9 @@ import re
 import sys
 from time import time, sleep
 from requests import Session
-from requests.exceptions import ConnectionError, JSONDecodeError
-from subprocess import check_output
+from requests import ConnectionError
+from json import JSONDecodeError
+from subprocess import run as run_process, CalledProcessError
 from concurrent.futures import ThreadPoolExecutor
 
 cfg = {}
@@ -100,14 +101,19 @@ def check_exploit():
         exit(-1)
 
 
-def run_exploit(team: str) -> str | None:
-    flag_format = cfg["flag_format"]
-    exploit = cfg["exploit"]
-    output = check_output([exploit, team]).decode()
-    match = flag_format.search(output)
-    if match:
-        return match.group(0)
-    print(f"Got no flag for team {team}")
+def run_exploit(team: str) -> list | None:
+    run_flags = []
+    try:
+        flag_format = cfg["flag_format"]
+        exploit = cfg["exploit"]
+        output = run_process([exploit, team], capture_output=True).stdout.decode()
+        while match := flag_format.search(output):
+            run_flags.append(match.group(0))
+        if len(flags) == 0:
+            print(f"Got no flag for team {team}")
+        return run_flags
+    except CalledProcessError:
+        print(f"Exploit crashed on team {team}!")
     return None
 
 
@@ -132,12 +138,11 @@ def run_exploit_on_teams(n_workers: int) -> (float, int):
     global flags
     fails = 0
     teams = cfg["teams"]
-    flag_format = cfg["flag_format"]
     with ThreadPoolExecutor(max_workers=n_workers) as executor:
         this_flags = executor.map(run_exploit, teams)
-        for flag in this_flags:
-            if flag and flag_format.match(flag):
-                flags.append(flag)
+        for run_flags in this_flags:
+            if run_flags:
+                flags.extend(run_flags)
             else:
                 fails += 1
     return fails

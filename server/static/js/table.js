@@ -82,6 +82,7 @@ entries_count.addEventListener("change", () => {
         entries_count.value = new_value = 10;
     }
     rows = new_value;
+    refresh_tables();
 });
 
 setInterval(refresh_tables, 5000);
