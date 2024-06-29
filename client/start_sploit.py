@@ -46,7 +46,7 @@ def parse_args():
         elif isinstance(default, int):
             arg_val = float(arg_val)
         cfg[arg] = arg_val
-    cfg["exploit"] = sys.argv[-1]
+    cfg["exploit"] = os.path.join("./", sys.argv[-1])
 
 
 def url_for(endpoint) -> str:
