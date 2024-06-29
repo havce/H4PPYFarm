@@ -12,9 +12,13 @@ services:
       - FARM_SUBMIT_PERIOD=${SUBMIT_PERIOD}
       - FARM_BATCH_LIMIT=${BATCH_LIMIT}
       - FARM_FLAG_FORMAT=${FLAG_FORMAT}
-      - FARM_DATABASE=${DATABASE}
       - FARM_TEAM_TOKEN=${TEAM_TOKEN}
       - FARM_SYSTEM_URL=${SYSTEM_URL}
       - FARM_TEAMS=${TEAMS}
       - FARM_PASSWORD=${PASSWORD}
       - FARM_SECRET_KEY=${SECRET_KEY}
+      - FARM_DATABASE=/happy-db/flags.db
+    volumes:
+      - happy-db:/happy-db
+volumes:
+  happy-db:
