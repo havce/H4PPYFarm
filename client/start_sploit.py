@@ -16,22 +16,36 @@ avg_wave_time = 0
 
 
 def usage():
-    print(f"""USAGE: {sys.argv[0]} --server-url URL --server-pass PASSWORD EXPLOIT
-  --server-url     The URL of the server running H4PPY Farm
-  --server-pass    The password of the H4PPY Farm server
+    print(f"""USAGE: {sys.argv[0]} [OPTIONS] EXPLOIT
+
+The possible value for OPTIONS are:
+  --server-url URL         The URL of the server running H4PPY Farm
+  --server-pass PASSWORD   The password of the H4PPY Farm server
+  --timeout TIMEOUT        The amount of time in seconds after which an instance of the exploit should be killed
     """)
     exit(-1)
 
 
-def parse_args():
-    for arg in ["server-url", "server-pass"]:
-        try:
-            idx = sys.argv.index(f"--{arg}")
-            if idx >= len(sys.argv) - 1:
-                usage()
-            cfg[arg] = sys.argv[idx + 1]
-        except ValueError:
+def get_arg(arg_name: str, default: str | int | None) -> str | None:
+    try:
+        idx = sys.argv.index(f"--{arg_name}")
+        if idx >= len(sys.argv) - 1:
             usage()
+        return sys.argv[idx + 1]
+    except ValueError:
+        return default
+
+
+def parse_args():
+    config_keys = {"server-url": None, "server-pass": None, "timeout": 10}
+    for arg, default in config_keys.items():
+        if not (arg_val := get_arg(arg, default)):
+            if not default:
+                usage()
+            arg_val = default
+        elif isinstance(default, int):
+            arg_val = float(arg_val)
+        cfg[arg] = arg_val
     cfg["exploit"] = sys.argv[-1]
 
 
@@ -105,7 +119,8 @@ def run_exploit(team: str) -> list | None:
     try:
         flag_format = cfg["flag_format"]
         exploit = cfg["exploit"]
-        output = run_process([exploit, team], capture_output=True, timeout=10).stdout.decode()
+        timeout = cfg["timeout"] if cfg["timeout"] > 1 else 1
+        output = run_process([exploit, team], capture_output=True, timeout=timeout).stdout.decode()
         run_flags = flag_format.findall(output)
         if len(run_flags) == 0:
             print(f"Got no flags for team {team}")
