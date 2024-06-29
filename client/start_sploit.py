@@ -138,9 +138,11 @@ def run_exploit(team: str) -> list | None:
 def compute_parameters(wave_time: float, wave: int) -> (int, float):
     global avg_wave_time
     deadline = cfg["tick_duration"] * 0.5
+    teams = cfg["teams"]
 
     avg_wave_time = ((avg_wave_time * (wave - 1)) + wave_time) / wave
-    n_workers = math.ceil(avg_wave_time / deadline)
+    time_per_team = avg_wave_time / len(teams)
+    n_workers = math.ceil((deadline * len(teams)) / time_per_team)
     if n_workers > os.cpu_count():
         n_workers = os.cpu_count()
 
