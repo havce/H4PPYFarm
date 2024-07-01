@@ -6,7 +6,7 @@ from queue import Queue
 from threading import Thread, get_ident
 from time import time, sleep
 from config import cfg
-from utils import info, warning, error, thread_yield
+from utils import info, error, thread_yield
 
 PENDING = 0
 EXPIRED = 1
@@ -18,11 +18,10 @@ REJECTED = 4
 class FlagStore(Thread):
     FLAG_LIFETIME = cfg.flag_lifetime * cfg.tick_duration
 
-    _REGISTER_FLAG = 0
+    _REGISTER_FLAGS = 0
     _REGISTER_SUBMISSION = 1
     _SELECT_FLAGS = 2
     _SLICE = 3
-    _COMMIT = 4
 
     def __init__(self):
         super().__init__()
@@ -49,12 +48,12 @@ class FlagStore(Thread):
             req_id = req["id"]
 
             match req["op"]:
-                case FlagStore._REGISTER_FLAG:
-                    self._register_flag(req["flag"], req["exploit"], req["timestamp"])
+                case FlagStore._REGISTER_FLAGS:
+                    self._register_flags(req["flag"], req["exploit"])
                     res = True
 
                 case FlagStore._REGISTER_SUBMISSION:
-                    self._register_submission(req["flag"], req["timestamp"], req["accepted"], req["message"])
+                    self._register_submissions(req["submissions"], req["timestamp"])
                     res = True
 
                 case FlagStore._SELECT_FLAGS:
@@ -62,10 +61,6 @@ class FlagStore(Thread):
 
                 case FlagStore._SLICE:
                     res = self._slice(req["start"], req["count"])
-
-                case FlagStore._COMMIT:
-                    self._db.commit()
-                    res = True
 
             self._responses[req_id] = res
 
@@ -116,40 +111,42 @@ class FlagStore(Thread):
             thread_yield()
         return self._responses.pop(req_id)
 
-    def commit(self):
-        self._request_sync(FlagStore._COMMIT, {})
-
-    def register_flag(self, flag: str, exploit: str, timestamp: float):
-        self._request_sync(FlagStore._REGISTER_FLAG, {
-            "flag": flag,
+    def register_flags(self, flags: list, exploit: str):
+        self._request_sync(FlagStore._REGISTER_FLAGS, {
+            "flag": flags,
             "exploit": exploit,
+        })
+
+    def _register_flags(self, flags: list, exploit: str):
+        data = list(map(lambda x: (x["flag"], exploit, x["ts"], PENDING), flags))
+        self._cur.executemany("""
+        INSERT OR IGNORE INTO flags (flag, exploit, timestamp, status)
+        VALUES (?, ?, ?, ?)
+        """, data)
+        self._db.commit()
+
+    def register_submissions(self, submissions: list, timestamp: float):
+        self._request_sync(FlagStore._REGISTER_SUBMISSION, {
+            "submissions": submissions,
             "timestamp": timestamp
         })
 
-    def _register_flag(self, flag: str, exploit: str, timestamp: float):
-        try:
-            self._cur.execute("""
-            INSERT INTO flags (flag, exploit, timestamp, status)
-            VALUES (?, ?, ?, ?)
-            """, (flag, exploit, math.floor(timestamp), PENDING))
-        except sqlite3.IntegrityError:
-            warning(f"Duplicate flag {flag}")
+    def _register_submissions(self, submissions: list, timestamp: float):
+        ts = math.floor(timestamp)
 
-    def register_submission(self, flag: str, timestamp: float, accepted: bool | None, message: str):
-        self._request_sync(FlagStore._REGISTER_SUBMISSION, {
-            "flag": flag,
-            "timestamp": timestamp,
-            "accepted": accepted,
-            "message": message
-        })
+        def to_db_entry(sub) -> (int, int, str, str):
+            accepted = sub.get("status", None)
+            message = sub.get("message", "No message from system")
+            status = ACCEPTED if accepted else UNKNOWN if accepted is None else REJECTED
+            return status, ts, message, sub["flag"]
 
-    def _register_submission(self, flag: str, timestamp: float, accepted: bool | None, message: str):
-        status = ACCEPTED if accepted else UNKNOWN if accepted is None else REJECTED
-        self._cur.execute("""
+        data = list(map(to_db_entry, submissions))
+        self._cur.executemany("""
         UPDATE flags
         SET status = ?, submission_timestamp = ?, system_message = ?
         WHERE flag = ?
-        """, (status, math.floor(timestamp), message, flag))
+        """, data)
+        self._db.commit()
 
     def select_flags_by_status(self, status: int, count: int) -> list:
         return self._request_sync(FlagStore._SELECT_FLAGS, {
@@ -210,13 +207,17 @@ class FlagSubmitter(Thread):
         super().join(**kwargs)
 
     def queue(self, exploit: str, flags: list):
+        now = time()
+
+        def ensure_ts(entry: dict) -> dict:
+            if not ("ts" in entry):
+                entry["ts"] = now
+            return entry
+
         entries = self._normalize_user_submitted_data(flags)
         info(f"Submitted {len(entries)} valid flags from exploit '{exploit}'")
-        for entry in entries:
-            ts = entry["ts"] if "ts" in entry else time()
-            if ts + FlagStore.FLAG_LIFETIME > time():
-                self._store.register_flag(entry["flag"], exploit, ts)
-        self._store.commit()
+        entries = list(filter(lambda x: now - x["ts"] < FlagStore.FLAG_LIFETIME, map(ensure_ts, entries)))
+        self._store.register_flags(entries, exploit)
 
     def run(self):
         while self._run:
@@ -265,12 +266,7 @@ class FlagSubmitter(Thread):
                 json=flags)
             try:
                 submissions = self._normalize_system_response_data(res.json())
-                for submission in submissions:
-                    flag = submission["flag"]
-                    accepted = submission.get("status", None)
-                    message = submission.get("msg", "No message from the system")
-                    self._store.register_submission(flag, ts, accepted, message)
-                self._store.commit()
+                self._store.register_submissions(submissions, ts)
                 info(f"Submitted {len(flags)} flags to {FlagSubmitter.SYSTEM_URL}")
             except requests.exceptions.JSONDecodeError:
                 error(f"Invalid server response: {res.text}")

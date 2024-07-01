@@ -5,7 +5,7 @@ services:
     build: ./server
     image: happy-farm
     ports:
-      - 8080:8080
+      - 6969:6969
     environment:
       - FARM_TICK_DURATION=${TICK_DURATION}
       - FARM_FLAG_LIFETIME=${FLAG_LIFETIME}

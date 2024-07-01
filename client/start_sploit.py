@@ -70,7 +70,7 @@ def authenticate() -> Session:
             print("Authentication failed. Is the server password correct?")
             exit(-1)
         return session
-    except ConnectionError as exc:
+    except ConnectionError:
         print(f"Could not communicate with the H4PPY Farm server.")
         exit(-1)
 
@@ -154,18 +154,19 @@ def compute_parameters(wave_time: float, wave: int) -> (int, float):
     return n_workers, wait_time
 
 
-def run_exploit_on_teams(n_workers: int) -> (float, int):
+def run_exploit_on_teams(n_workers: int) -> (float, list):
     global flags
     fails = 0
     teams = cfg["teams"]
+    wave_flags = []
     with ThreadPoolExecutor(max_workers=n_workers) as executor:
         this_flags = executor.map(run_exploit, teams)
         for run_flags in this_flags:
             if run_flags:
-                flags.extend(run_flags)
+                wave_flags, flags.extend(run_flags)
             else:
                 fails += 1
-    return fails
+    return fails, wave_flags
 
 
 def send_flags(session: Session):
@@ -197,13 +198,14 @@ def main():
             print()
             print(f"[{wave:03d}] Beginning new run...")
             start = time()
-            fails = run_exploit_on_teams(n_workers)
+            fails, wave_flags = run_exploit_on_teams(n_workers)
             wave_time = time() - start
-            print(f"[{wave:03d}] Run finished, got {len(flags)} flags")
+            print(f"[{wave:03d}] Run finished, got {len(wave_flags)} flags")
             print(f"[{wave:03d}] Exploit failed on {fails} teams")
             print(f"[{wave:03d}] Took {wave_time:.2f} seconds")
-            if len(flags) == 0:
+            if len(wave_flags) == 0:
                 print(f"[{wave:03d}] Got 0 flags, something's broken!")
+            flags.extend(wave_flags)
             send_flags(session)
             sleep(wait_time)
             get_config(session)  # Refresh config
