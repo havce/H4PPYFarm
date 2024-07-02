@@ -5,7 +5,7 @@ from os import getenv
 from utils import info, warning, error
 
 defaults = {
-    "port": 8080,
+    "port": 6969,
     "flag_lifetime": 5,
     "tick_duration": 120,
     "submit_period": 10,
