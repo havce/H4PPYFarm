@@ -228,7 +228,7 @@ def main():
                 wprint(f"Sleeping for {wait_time:.2f}s")
                 sleep(wait_time)
             else:
-                wprint(highlight("Your exploit is very slow! Speed it up!", YELLOWx))
+                wprint(highlight("Your exploit is very slow! Speed it up!", YELLOW))
             get_config(session)  # Refresh config
             wave += 1
     except KeyboardInterrupt:
