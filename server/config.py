@@ -96,6 +96,12 @@ class Config(object):
             except ValueError:
                 assert False, f"Invalid range '{fmt}'"
 
+    @property
+    def system_url(self):
+        val = self._get_param("system_url")
+        assert "://" in val, "No protocol specified in system URL!"
+        return val
+
     def __getattr__(self, item):
         return self._get_param(item)
 

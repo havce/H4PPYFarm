@@ -23,7 +23,7 @@ class FlagStore(Thread):
     _SELECT_FLAGS = 2
     _SLICE = 3
 
-    _MESSAGE_REGEX = re.compile(f"\[{cfg.flag_format}]", re.MULTILINE)
+    _MESSAGE_REGEX = re.compile(f"\\[{cfg.flag_format}]", re.MULTILINE)
 
     def __init__(self):
         super().__init__()
