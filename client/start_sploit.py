@@ -40,6 +40,7 @@ The possible value for OPTIONS are:
   --server-url URL         The URL of the server running H4PPY Farm
   --server-pass PASSWORD   The password of the H4PPY Farm server
   --timeout TIMEOUT        The amount of time in seconds after which an instance of the exploit should be killed
+  --help                   Print this message
     """)
     exit(-1)
 
@@ -55,6 +56,8 @@ def get_arg(arg_name: str, default: str | int | None) -> str | None:
 
 
 def parse_args():
+    if "--help" in sys.argv:
+        usage()
     config_keys = {"server-url": None, "server-pass": None, "timeout": 10}
     for arg, default in config_keys.items():
         if not (arg_val := get_arg(arg, default)):
