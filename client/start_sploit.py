@@ -10,13 +10,27 @@ from json import JSONDecodeError
 from subprocess import run as run_process, CalledProcessError, TimeoutExpired
 from concurrent.futures import ThreadPoolExecutor
 
+
 cfg = {}
 flags = []
 wave = 1
 
+BLACK = 0
+RED = 1
+GREEN = 2
+YELLOW = 3
+BLUE = 4
+MAGENTA = 5
+CYAN = 6
+WHITE = 7
+
 
 def wprint(*args):
     print(f"[{wave:03d}]", *args)
+
+
+def highlight(message: str, color: int):
+    return f"\033[3{color}m{message}\033[0m"
 
 
 def usage():
@@ -71,11 +85,11 @@ def authenticate() -> Session:
         session = Session()
         res = session.post(url_for("/api/auth"), json={"password": cfg["server-pass"]})
         if res.status_code != 200:
-            print("Authentication failed. Is the server password correct?")
+            print(highlight("Authentication failed. Is the server password correct?", RED))
             exit(-1)
         return session
     except ConnectionError:
-        print(f"Could not communicate with the H4PPY Farm server.")
+        print(highlight(f"Could not communicate with the H4PPY Farm server.", RED))
         exit(-1)
 
 
@@ -124,18 +138,18 @@ def run_exploit(team: str) -> list | None:
         flag_format = cfg["flag_format"]
         exploit = cfg["exploit"]
         timeout = cfg["timeout"] if cfg["timeout"] > 1 else 1
-        output = run_process([exploit, team], capture_output=True, timeout=timeout).stdout.decode()
+        output = run_process([exploit, team], capture_output=True, timeout=timeout, check=True).stdout.decode()
         run_flags = flag_format.findall(output)
         if len(run_flags) == 0:
-            wprint(f"Got no flags for team {team}")
+            wprint(highlight(f"Got no flags for team {team}", MAGENTA))
         else:
-            wprint(f"Got {len(run_flags)} flags from team {team}")
+            wprint(highlight(f"Got {len(run_flags)} flags from team {team}", GREEN))
             ts = time()
             return list(map(lambda x: {"flag": x, "ts": ts}, run_flags))
     except CalledProcessError:
-        wprint(f"Exploit crashed on team {team}!")
+        wprint(highlight(f"Exploit crashed on team {team}!", RED))
     except TimeoutExpired:
-        wprint(f"Exploit timed-out on team {team}!")
+        wprint(highlight(f"Exploit timed-out on team {team}!", YELLOW))
     return None
 
 
@@ -175,11 +189,11 @@ def send_flags(session: Session):
         exploit_name = os.path.basename(exploit).split(".")[0]
         res = session.post(url_for(f"/api/flags/{exploit_name}"), json=flags)
         if res.status_code != 200:
-            wprint("Could not send flags, am I not authenticated?")
+            wprint(highlight("Could not send flags, am I not authenticated?", YELLOW))
         else:
             flags.clear()
     except ConnectionError:
-        wprint("Could not send flags, I will send them later.")
+        wprint(highlight("Could not send flags, I will send them later.", YELLOW))
 
 
 def main():
@@ -203,7 +217,7 @@ def main():
             wprint(f"Run finished, got {len(wave_flags)} flags")
             wprint(f"Exploit failed on {fails} teams")
             if len(wave_flags) == 0:
-                wprint(f"Got 0 flags, something's broken!")
+                wprint(highlight(f"Got 0 flags, something's broken!", YELLOW))
             flags.extend(wave_flags)
             send_flags(session)
             wave_time = time() - start
@@ -214,7 +228,7 @@ def main():
                 wprint(f"Sleeping for {wait_time:.2f}s")
                 sleep(wait_time)
             else:
-                wprint("Your exploit is very slow! Speed it up!")
+                wprint(highlight("Your exploit is very slow! Speed it up!", YELLOWx))
             get_config(session)  # Refresh config
             wave += 1
     except KeyboardInterrupt:
