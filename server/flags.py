@@ -23,6 +23,8 @@ class FlagStore(Thread):
     _SELECT_FLAGS = 2
     _SLICE = 3
 
+    _MESSAGE_REGEX = re.compile(f"\[{cfg.flag_format}]", re.MULTILINE)
+
     def __init__(self):
         super().__init__()
         self._run = False
@@ -137,6 +139,7 @@ class FlagStore(Thread):
         def to_db_entry(sub) -> (int, int, str, str):
             accepted = sub.get("status", None)
             message = sub.get("message", "No message from system")
+            message = FlagStore._MESSAGE_REGEX.sub("", message).strip()
             status = ACCEPTED if accepted else UNKNOWN if accepted is None else REJECTED
             return status, ts, message, sub["flag"]
 
@@ -241,10 +244,6 @@ class FlagSubmitter(Thread):
             responses = [responses]
         return list(filter(lambda x: "flag" in x, responses))
 
-    # `received` can be one of the following:
-    # ["flag_value1", "flag_value2"]
-    # {"flag": "flag_value"} or {"flag": "flag_value", "ts", timestamp}
-    # [{"flag": "flag_value1"}, {"flag": "flag_value2", "ts", timestamp}]
     @staticmethod
     def _normalize_user_submitted_data(submissions) -> list:
         # if `arr` is not a list then it must be a dict, otherwise it's invalid
