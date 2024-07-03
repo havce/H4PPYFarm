@@ -138,7 +138,7 @@ class FlagStore(Thread):
 
         def to_db_entry(sub) -> (int, int, str, str):
             accepted = sub.get("status", None)
-            message = sub.get("message", "No message from system")
+            message = sub.get("msg", "No message from system")
             message = FlagStore._MESSAGE_REGEX.sub("", message).strip()
             status = ACCEPTED if accepted else UNKNOWN if accepted is None else REJECTED
             return status, ts, message, sub["flag"]
