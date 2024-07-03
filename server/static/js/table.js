@@ -4,7 +4,7 @@ const prev_page_btn = document.getElementById("prev-page");
 const page_counter = document.getElementById("page-counter");
 const entries_count = document.getElementById("count");
 
-let page = 0, rows = parseInt(entries_count.value);
+let page = 0, rows = parseInt(entries_count.value, 10);
 
 function zero_pad(n, k) {
     let s = `${k}`;
@@ -58,7 +58,7 @@ function build_table_rows(data) {
 }
 
 function build_table(data) {
-    if (data.length == 0) {
+    if (data.length === 0) {
         return "<p> No data to show :( </p>"
     }
     let html = "<table>"
@@ -77,7 +77,7 @@ function refresh_tables() {
 next_page_btn.addEventListener("click", () => change_page(+1));
 prev_page_btn.addEventListener("click", () => change_page(-1));
 entries_count.addEventListener("change", () => {
-    new_value = parseInt(entries_count.value);
+    new_value = parseInt(entries_count.value, 10);
     if (new_value < 10) {
         entries_count.value = new_value = 10;
     }
