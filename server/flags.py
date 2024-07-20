@@ -1,12 +1,16 @@
 import math
 import re
+import select
+
 import requests
+import socket
 import sqlite3
 from queue import Queue
 from threading import Thread, get_ident
 from time import time, sleep
 from config import cfg
-from utils import info, error, thread_yield
+from utils import info, warning, error, thread_yield
+
 
 PENDING = 0
 EXPIRED = 1
@@ -193,7 +197,6 @@ class FlagSubmitter(Thread):
     BATCH_LIMIT = cfg.batch_limit
     SUBMIT_PERIOD = cfg.submit_period
     SYSTEM_URL = cfg.system_url
-    TEAM_TOKEN = cfg.team_token
     FLAG_FORMAT = re.compile(f"^{cfg.flag_format}$")
 
     def __init__(self, store: FlagStore):
@@ -228,21 +231,13 @@ class FlagSubmitter(Thread):
             if len(batch) == 0:
                 thread_yield()
                 continue
-            if self._submit(batch):
+            if not self._submit(batch):
                 sleep(5)  # On failure, retry after 5 seconds
                 continue
             sleep(FlagSubmitter.SUBMIT_PERIOD)
 
     def _next_batch(self) -> list:
         return self._store.select_flags_by_status(PENDING, FlagSubmitter.BATCH_LIMIT)
-
-    @staticmethod
-    def _normalize_system_response_data(responses) -> list:
-        if not isinstance(responses, list):
-            if not isinstance(responses, dict):
-                raise requests.exceptions.JSONDecodeError()
-            responses = [responses]
-        return list(filter(lambda x: "flag" in x, responses))
 
     @staticmethod
     def _normalize_user_submitted_data(submissions) -> list:
@@ -257,26 +252,118 @@ class FlagSubmitter(Thread):
         return list(normalized)
 
     def _submit(self, flags: list) -> bool:
+        ts = time()
+        submissions = self.do_submit(flags)
+        if submissions:
+            assert isinstance(submissions, list), "FlagSubmitter.do_submit() should always return a list"
+            info(f"Submitted {len(flags)} flags to {FlagSubmitter.SYSTEM_URL}")
+            self._store.register_submissions(submissions, ts)
+            return True
+        return False
+
+    def do_submit(self, flag: list[str]) -> list | None:
+        raise NotImplementedError()
+
+
+class FlagSubmitterHttp(FlagSubmitter):
+    def __init__(self, store: FlagStore):
+        super().__init__(store)
+        self._team_token = cfg.team_token
+
+    @staticmethod
+    def _normalize_system_response_data(responses) -> list:
+        if not isinstance(responses, list):
+            if not isinstance(responses, dict):
+                raise requests.exceptions.JSONDecodeError()
+            responses = [responses]
+        return list(filter(lambda x: "flag" in x, responses))
+
+    def do_submit(self, flags: list[str]) -> list | None:
         try:
-            ts = time()
             res = requests.put(
                 FlagSubmitter.SYSTEM_URL,
-                headers={"X-Team-Token": FlagSubmitter.TEAM_TOKEN},
+                headers={"X-Team-Token": self._team_token},
                 json=flags)
             try:
-                submissions = self._normalize_system_response_data(res.json())
-                self._store.register_submissions(submissions, ts)
-                info(f"Submitted {len(flags)} flags to {FlagSubmitter.SYSTEM_URL}")
+                return self._normalize_system_response_data(res.json())
             except requests.exceptions.JSONDecodeError:
                 error(f"Invalid server response: {res.text}")
-            return False
         except requests.ConnectionError:
             error(f"An error occurred while connecting to the system ({FlagSubmitter.SYSTEM_URL}).")
             info("Retrying in 5 seconds...")
         except Exception as exc:
             error(exc)  # I don't know if requests.put() can throw any other exception, but I don't care, catch 'em all.
-        return True
+        return None
+
+
+class FlagSubmitterTcp(FlagSubmitter):
+    def __init__(self, store: FlagStore):
+        super().__init__(store)
+        self._flag_format = re.compile(cfg.flag_format)
+        ip_and_port = FlagSubmitter.SYSTEM_URL.split("://")[1].split(":")
+        ip = ip_and_port[0]
+        port = ip_and_port[1] if len(ip_and_port) > 1 else 1337
+        try:
+            self._address = (ip, int(port))
+        except ValueError:
+            error(f"Invalid port for TCP protocol: {port}")
+            exit(-1)
+        if len(ip_and_port) < 2:
+            warning("No port specified for TCP protocol, defaulting to 1337")
+
+    @staticmethod
+    def _normalize_system_response_data(submissions: iter) -> list[dict[str, str | bool]]:
+        def to_normalized(sub: str):
+            flag, message = sub.split(" ")[:2]
+            status = message.upper() == "OK"
+            return {"flag": flag, "msg": message, "status": status}
+
+        return list(map(to_normalized, submissions))
+
+    def do_submit(self, flags: list[str]) -> list[dict[str, str | bool]] | None:
+        try:
+            sock = socket.create_connection(self._address, timeout=10)
+            sock.setblocking(False)
+            payload = "\n".join(flags)
+            sock.sendall(payload.encode())
+            submissions = []
+            buf = b""
+            while len(submissions) < len(flags):
+                try:
+                    ready = select.select([sock], [], [], 10)
+                    if ready[0]:
+                        buf += sock.recv(4096)
+                except TimeoutError:
+                    pass
+                if len(buf) == 0:
+                    # client has disconnected?
+                    break
+                recv_flags = buf.split(b"\n")
+                buf = recv_flags.pop()
+                full_flags = map(lambda x: x.decode(), recv_flags)
+                full_flags = filter(lambda x: self._flag_format.search(x), full_flags)
+                submissions.extend(full_flags)
+            sock.close()
+            if len(submissions) == 0:
+                return None
+            elif len(submissions) < len(flags):
+                warning("Server returned less flags than the ones I submitted")
+            return self._normalize_system_response_data(submissions)
+        except TimeoutError:
+            error(f"Server connection timed-out ({self._address[0]}:{self._address[1]})")
+            return None
+
+
+def get_flag_submitter(store: FlagStore):
+    sys_url = FlagSubmitter.SYSTEM_URL
+    proto = sys_url.split("://")[0]
+    if proto.startswith("http"):
+        return FlagSubmitterHttp(store)
+    elif proto.startswith("tcp"):
+        return FlagSubmitterTcp(store)
+    else:
+        assert False, f"Unsupported protocol {proto}"
 
 
 flag_store = FlagStore()
-flag_submitter = FlagSubmitter(flag_store)
+flag_submitter = get_flag_submitter(flag_store)
