@@ -128,7 +128,7 @@ def check_exploit():
                       "Please put '#!/usr/bin/env python3' in the first line of the file")
                 exit(-1)
             source = "\n".join(f.readlines())
-            if re.search(r'flush[(=]', source) is None:
+            if re.search(r'flush\s*=\s*True', source) is None:
                 print("Please use print(..., flush=True) in your script, instead of just print(...)")
                 exit(-1)
     except FileNotFoundError as exc:
@@ -136,7 +136,7 @@ def check_exploit():
         exit(-1)
 
 
-def run_exploit(team: str) -> list | None:
+def run_exploit(team: str) -> list[dict[str, str | float]] | None:
     try:
         flag_format = cfg["flag_format"]
         exploit = cfg["exploit"]
@@ -171,7 +171,7 @@ def compute_n_workers(n_workers: int, deadline: float, wave_time: float) -> int:
     return n_workers
 
 
-def run_exploit_on_teams(n_workers: int) -> (float, list):
+def run_exploit_on_teams(n_workers: int) -> (float, list[dict[str, str | float]]):
     global flags
     fails = 0
     teams = cfg["teams"]
@@ -189,7 +189,7 @@ def run_exploit_on_teams(n_workers: int) -> (float, list):
 def send_flags(session: Session):
     try:
         exploit = cfg["exploit"]
-        exploit_name = os.path.basename(exploit).split(".")[0]
+        exploit_name, = os.path.basename(exploit).split(".", 1)
         res = session.post(url_for(f"/api/flags/{exploit_name}"), json=flags)
         if res.status_code != 200:
             wprint(highlight("Could not send flags, am I not authenticated?", YELLOW))
