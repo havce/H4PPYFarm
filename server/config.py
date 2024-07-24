@@ -70,19 +70,15 @@ class Config(object):
         return key
 
     @property
-    def password(self) -> str:
-        return str(self._get_param("password"))
-
-    @property
     def database(self) -> str:
-        val = self._get_param("database")
+        val = str(self._get_param("database"))
         if val == ":memory:":
             warning("Using an in-memory database is discouraged!")
         return val
 
     @property
-    def teams(self) -> list:
-        value = self._get_param("teams")
+    def teams(self) -> list[str]:
+        value = str(self._get_param("teams"))
         match = Config._RANGE.search(value)
         if match:
             assert len(match.groups()) == 1, f"Invalid range '{value}'"
@@ -96,14 +92,16 @@ class Config(object):
             except ValueError:
                 assert False, f"Invalid range '{fmt}'"
 
-    @property
-    def system_url(self):
-        val = self._get_param("system_url")
-        assert "://" in val, "No protocol specified in system URL!"
+    def __getattr__(self, item) -> str | int:
+        val = self._get_param(item)
+        match item:
+            case "password" | "team_token":
+                return str(val)
+            case "timeout":
+                assert isinstance(val, int), "Timeout must be an integer"
+            case "system_url":
+                assert isinstance(val, str) and "://" in val, "No protocol specified in system URL!"
         return val
-
-    def __getattr__(self, item):
-        return self._get_param(item)
 
 
 cfg = Config()
