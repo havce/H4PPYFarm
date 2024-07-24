@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   happy-farm:
     build: ./server
