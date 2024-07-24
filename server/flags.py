@@ -27,8 +27,6 @@ class FlagStore(Thread):
     _SELECT_FLAGS = 2
     _SLICE = 3
 
-    _MESSAGE_REGEX = re.compile(f"\\[{cfg.flag_format}]", re.MULTILINE)
-
     def __init__(self):
         super().__init__()
         self._run = False
@@ -49,26 +47,21 @@ class FlagStore(Thread):
                 thread_yield()
                 continue
 
-            res = False
             req = self._requests.get()
             req_id = req["id"]
 
             match req["op"]:
                 case FlagStore._REGISTER_FLAGS:
                     self._register_flags(req["flag"], req["exploit"])
-                    res = True
 
                 case FlagStore._REGISTER_SUBMISSION:
                     self._register_submissions(req["submissions"], req["timestamp"])
-                    res = True
 
                 case FlagStore._SELECT_FLAGS:
-                    res = self._select_flags_by_status(req["status"], req["count"])
+                    self._responses[req_id] = self._select_flags_by_status(req["status"], req["count"])
 
                 case FlagStore._SLICE:
-                    res = self._slice(req["start"], req["count"])
-
-            self._responses[req_id] = res
+                    self._responses[req_id] = self._slice(req["start"], req["count"])
 
         self._close_database()
 
@@ -108,22 +101,22 @@ class FlagStore(Thread):
         """, (FlagStore.FLAG_LIFETIME,))
         self._db.commit()
 
-    def _request_sync(self, op: int, data: dict) -> bool | list:
+    def _request_sync(self, op: int, data: dict[str, int | str | list]) -> list | None:
         req_id = get_ident()
         data["op"] = op
         data["id"] = req_id
         self._requests.put(data)
         while not (req_id in self._responses):
             thread_yield()
-        return self._responses.pop(req_id)
+        return self._responses.pop(req_id, None)
 
-    def register_flags(self, flags: list, exploit: str):
+    def register_flags(self, flags: list[dict[str, str | float]], exploit: str):
         self._request_sync(FlagStore._REGISTER_FLAGS, {
             "flag": flags,
             "exploit": exploit,
         })
 
-    def _register_flags(self, flags: list, exploit: str):
+    def _register_flags(self, flags: list[dict[str, str | float]], exploit: str):
         data = list(map(lambda x: (x["flag"], exploit, x["ts"], PENDING), flags))
         self._cur.executemany("""
         INSERT OR IGNORE INTO flags (flag, exploit, timestamp, status)
@@ -143,7 +136,6 @@ class FlagStore(Thread):
         def to_db_entry(sub) -> (int, int, str, str):
             accepted = sub.get("status", None)
             message = sub.get("msg", "No message from system")
-            message = FlagStore._MESSAGE_REGEX.sub("", message).strip()
             status = ACCEPTED if accepted else UNKNOWN if accepted is None else REJECTED
             return status, ts, message, sub["flag"]
 
@@ -155,25 +147,25 @@ class FlagStore(Thread):
         """, data)
         self._db.commit()
 
-    def select_flags_by_status(self, status: int, count: int) -> list:
+    def select_flags_by_status(self, status: int, count: int) -> list[str]:
         return self._request_sync(FlagStore._SELECT_FLAGS, {
             "status": status,
             "count": count
         })
 
-    def _select_flags_by_status(self, status: int, count: int) -> list:
+    def _select_flags_by_status(self, status: int, count: int) -> list[str]:
         res = self._cur.execute("""
         SELECT flag FROM flags WHERE status = ? LIMIT ?
         """, (status, count))
         return list(map(lambda x: x[0], res.fetchall()))
 
-    def slice(self, start: int, count: int) -> list:
+    def slice(self, start: int, count: int) -> list[dict[str, str | float | int]]:
         return self._request_sync(FlagStore._SLICE, {
             "start": start,
             "count": count
         })
 
-    def _slice(self, start: int, count: int) -> list:
+    def _slice(self, start: int, count: int) -> list[dict[str, str | float | int]]:
         res = self._cur.execute("""
         SELECT * FROM flags ORDER BY timestamp DESC LIMIT ? OFFSET ?
         """, (count, start))
@@ -213,10 +205,10 @@ class FlagSubmitter(Thread):
         self._run = False
         super().join(**kwargs)
 
-    def queue(self, exploit: str, flags: list):
+    def queue(self, exploit: str, flags: list[str]):
         now = time()
 
-        def ensure_ts(entry: dict) -> dict:
+        def ensure_ts(entry: dict[str, str | float]) -> dict[str, str | float]:
             if not ("ts" in entry):
                 entry["ts"] = now
             return entry
@@ -229,19 +221,16 @@ class FlagSubmitter(Thread):
     def run(self):
         while self._run:
             batch = self._next_batch()
-            if len(batch) == 0:
-                thread_yield()
-                continue
-            if not self._submit(batch):
-                sleep(5)  # On failure, retry after 5 seconds
+            if len(batch) == 0 or not self._submit(batch):
+                sleep(5)  # on idle or on failure, retry after 5 seconds
                 continue
             sleep(FlagSubmitter.SUBMIT_PERIOD)
 
-    def _next_batch(self) -> list:
+    def _next_batch(self) -> list[str]:
         return self._store.select_flags_by_status(PENDING, FlagSubmitter.BATCH_LIMIT)
 
     @staticmethod
-    def _normalize_user_submitted_data(submissions) -> list:
+    def _normalize_user_submitted_data(submissions) -> list[dict[str, str | float]]:
         # if `arr` is not a list then it must be a dict, otherwise it's invalid
         if not isinstance(submissions, list):
             if not isinstance(submissions, dict):
@@ -252,7 +241,7 @@ class FlagSubmitter(Thread):
         normalized = filter(lambda x: not (FlagSubmitter.FLAG_FORMAT.match(x["flag"]) is None), normalized)
         return list(normalized)
 
-    def _submit(self, flags: list) -> bool:
+    def _submit(self, flags: list[str]) -> bool:
         ts = time()
         submissions = self.do_submit(flags)
         if submissions:
@@ -262,7 +251,7 @@ class FlagSubmitter(Thread):
             return True
         return False
 
-    def do_submit(self, flag: list[str]) -> list | None:
+    def do_submit(self, flag: list[str]) -> list[dict[str, str | bool]] | None:
         raise NotImplementedError()
 
 
@@ -270,16 +259,20 @@ class FlagSubmitterHttp(FlagSubmitter):
     def __init__(self, store: FlagStore):
         super().__init__(store)
         self._team_token = cfg.team_token
+        self._message_regex = re.compile(f"\\[{cfg.flag_format}]", re.MULTILINE)
 
-    @staticmethod
-    def _normalize_system_response_data(responses) -> list:
+    def _normalize_system_response_data(self, responses: list[dict[str, str | bool] | dict[str, str | bool]]) \
+            -> list[dict[str, str | bool]]:
         if not isinstance(responses, list):
             if not isinstance(responses, dict):
                 raise requests.exceptions.JSONDecodeError()
             responses = [responses]
-        return list(filter(lambda x: "flag" in x, responses))
+        sanitized = list(filter(lambda x: "flag" in x, responses))
+        for entry in sanitized:
+            entry["msg"] = self._message_regex.sub("", entry["msg"]).strip()
+        return sanitized
 
-    def do_submit(self, flags: list[str]) -> list | None:
+    def do_submit(self, flags: list[str]) -> list[dict[str, str | bool]] | None:
         try:
             res = requests.put(
                 FlagSubmitter.SYSTEM_URL,
@@ -292,7 +285,6 @@ class FlagSubmitterHttp(FlagSubmitter):
                 error(f"Invalid server response: {res.text}")
         except requests.ConnectionError:
             error(f"An error occurred while connecting to the system ({FlagSubmitter.SYSTEM_URL}).")
-            info("Retrying in 5 seconds...")
         except Exception as exc:
             error(exc)  # I don't know if requests.put() can throw any other exception, but I don't care, catch 'em all.
         return None
@@ -315,9 +307,9 @@ class FlagSubmitterTcp(FlagSubmitter):
 
     @staticmethod
     def _normalize_system_response_data(submissions: iter) -> list[dict[str, str | bool]]:
-        def to_normalized(sub: str):
-            flag, message = sub.split(" ")[:2]
-            status = message.upper() == "OK"
+        def to_normalized(sub: str) -> dict[str, str | bool]:
+            flag, message = sub.split(" ", 1)
+            status = message.upper().startswith("OK")
             return {"flag": flag, "msg": message, "status": status}
 
         return list(map(to_normalized, submissions))
@@ -356,7 +348,7 @@ class FlagSubmitterTcp(FlagSubmitter):
             return None
 
 
-def get_flag_submitter(store: FlagStore):
+def get_flag_submitter(store: FlagStore) -> FlagSubmitterTcp | FlagSubmitterHttp:
     sys_url = FlagSubmitter.SYSTEM_URL
     proto = sys_url.split("://")[0]
     if proto.startswith("http"):
