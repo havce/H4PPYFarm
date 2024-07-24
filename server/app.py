@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 
 import json
-from flask import Flask, request, abort, session, redirect, send_from_directory
+from flask import Flask, request, abort, session, redirect, send_from_directory, Response
 from config import cfg
 from flags import flag_store, flag_submitter
 from utils import error
+from waitress import serve
 
 app = Flask(__name__)
 app.secret_key = cfg.secret_key
@@ -15,21 +16,21 @@ def verify_session() -> bool:
 
 
 @app.route("/", methods=["GET"])
-def index():
+def index() -> Response:
     if verify_session():
         return send_from_directory("static", "html/index.html")
     return redirect("/auth")
 
 
 @app.route("/auth", methods=["GET"])
-def auth():
+def auth() -> Response:
     if verify_session():
         return redirect("/")
     return send_from_directory("static", "html/auth.html")
 
 
 @app.route("/api/auth", methods=["POST"])
-def auth_api():
+def auth_api() -> str:
     if request.is_json and request.json["password"] == cfg.password:
         session["user"] = request.remote_addr
     else:
@@ -37,7 +38,7 @@ def auth_api():
     return ""
 
 
-@app.route("/api/flags/<exp>", methods=["POST", "PUT"])
+@app.route("/api/flags/<string:exp>", methods=["POST", "PUT"])
 def flags_put(exp: str = None):
     if not verify_session():
         abort(403)
@@ -52,7 +53,7 @@ def flags_put(exp: str = None):
 
 
 @app.route("/api/flags", methods=["GET"])
-def flags_get():
+def flags_get() -> str:
     if not verify_session():
         abort(403)
 
@@ -70,7 +71,7 @@ def flags_get():
 
 
 @app.route("/api/config", methods=["GET"])
-def config():
+def config() -> str:
     if not verify_session():
         abort(403)
 
@@ -90,6 +91,6 @@ def config():
 if __name__ == "__main__":
     flag_store.start()
     flag_submitter.start()
-    app.run(host="0.0.0.0", port=cfg.port)
+    serve(app, host="0.0.0.0", port=cfg.port)
     flag_submitter.join()
     flag_store.join()
