@@ -11,7 +11,8 @@ defaults = {
     "submit_period": 10,
     "batch_limit": 1000,
     "database": ":memory:",
-    "flag_format": "[A-Z0-9]{31}="
+    "flag_format": "[A-Z0-9]{31}=",
+    "timeout": 10
 }
 
 

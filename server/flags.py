@@ -197,6 +197,7 @@ class FlagSubmitter(Thread):
     BATCH_LIMIT = cfg.batch_limit
     SUBMIT_PERIOD = cfg.submit_period
     SYSTEM_URL = cfg.system_url
+    TIMEOUT = cfg.timeout
     FLAG_FORMAT = re.compile(f"^{cfg.flag_format}$")
 
     def __init__(self, store: FlagStore):
@@ -283,7 +284,8 @@ class FlagSubmitterHttp(FlagSubmitter):
             res = requests.put(
                 FlagSubmitter.SYSTEM_URL,
                 headers={"X-Team-Token": self._team_token},
-                json=flags)
+                json=flags,
+                timeout=FlagSubmitter.TIMEOUT)
             try:
                 return self._normalize_system_response_data(res.json())
             except requests.exceptions.JSONDecodeError:
@@ -322,7 +324,7 @@ class FlagSubmitterTcp(FlagSubmitter):
 
     def do_submit(self, flags: list[str]) -> list[dict[str, str | bool]] | None:
         try:
-            sock = socket.create_connection(self._address, timeout=10)
+            sock = socket.create_connection(self._address, timeout=FlagSubmitter.TIMEOUT)
             sock.setblocking(False)
             payload = "\n".join(flags)
             sock.sendall(payload.encode())
