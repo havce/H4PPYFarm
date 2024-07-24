@@ -1,20 +1,20 @@
 from time import sleep
 
 
-def _print(msg):
-    print(msg, flush=True)
+def _print(*args):
+    print(*args, "\033[0m", flush=True)
 
 
-def info(msg):
-    _print(f"[INFO] {msg}")
+def info(*args):
+    _print(f"\033[36m[INFO]", *args)
 
 
-def warning(msg):
-    _print(f"[WARN] {msg}")
+def warning(*args):
+    _print(f"\033[33m[WARN]", *args)
 
 
-def error(msg):
-    _print(f"[ERRO] {msg}")
+def error(*args):
+    _print(f"\033[31m[ERRO]", *args)
 
 
 def thread_yield():
