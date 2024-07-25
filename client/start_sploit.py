@@ -15,7 +15,6 @@ from concurrent.futures import ThreadPoolExecutor
 cfg = {}
 
 # wave state
-flags = []
 wave = 1
 
 # failure filter
@@ -32,6 +31,7 @@ WHITE = 7
 
 
 def wprint(*args):
+    global wave
     print(f"[{wave:03d}]", *args)
 
 
@@ -69,6 +69,8 @@ def get_arg(arg_name: str, default: str | int | None, is_switch: bool) -> str | 
 
 
 def parse_args():
+    global cfg
+
     if "--help" in sys.argv:
         usage()
     config_keys = {
@@ -91,10 +93,12 @@ def parse_args():
 
 
 def url_for(endpoint) -> str:
+    global cfg
+
     url = cfg["server-url"]
-    if not url.startswith("http://"):
+    if not (url.startswith("http") and "://" in url):
         url = f"http://{url}"
-    # This is probably not needed
+    # this is probably not needed
     if url[-1] == "/" and endpoint[0] == "/":
         url = url[:-1]
     elif url[-1] != "/" and endpoint[0] != "/":
@@ -103,6 +107,8 @@ def url_for(endpoint) -> str:
 
 
 def authenticate() -> Session:
+    global cfg
+
     print(f"Authenticating on {url_for('/api/auth')} with password ({'*' * len(cfg['server-pass'])})...")
     try:
         session = Session()
@@ -118,6 +124,7 @@ def authenticate() -> Session:
 
 def get_config(session: Session):
     global cfg
+
     try:
         res = session.get(url_for("/api/config"))
         remote_cfg = res.json()
@@ -140,6 +147,8 @@ def get_config(session: Session):
 
 
 def check_exploit():
+    global cfg
+
     exploit = cfg["exploit"]
     print(f"Checking exploit '{exploit}'...")
     try:
@@ -154,6 +163,8 @@ def check_exploit():
 
 
 def run_exploit(team: str) -> list[dict[str, str | float]] | None:
+    global failure_counters, cfg
+
     failure_threshold = cfg["failure-threshold"]
     if randint(0, failure_counters[team]) > failure_threshold:
         # decrease the possibility of running the exploit on teams on which the exploit seems to fail the most
@@ -190,6 +201,8 @@ def run_exploit(team: str) -> list[dict[str, str | float]] | None:
 
 
 def compute_n_workers(n_workers: int, deadline: float, wave_time: float) -> int:
+    global cfg
+
     teams = cfg["teams"]
 
     wave_time = math.ceil(wave_time)
@@ -206,7 +219,8 @@ def compute_n_workers(n_workers: int, deadline: float, wave_time: float) -> int:
 
 
 def run_exploit_on_teams(n_workers: int) -> (float, list[dict[str, str | float]]):
-    global flags
+    global cfg
+
     fails = 0
     teams = cfg["teams"]
     wave_flags = []
@@ -220,17 +234,19 @@ def run_exploit_on_teams(n_workers: int) -> (float, list[dict[str, str | float]]
     return fails, wave_flags
 
 
-def send_flags(session: Session):
+def send_flags(session: Session, flags: list[str]) -> bool:
+    global cfg
+
     try:
         exploit = cfg["exploit"]
         exploit_name, _ = os.path.basename(exploit).split(".", 1)
         res = session.post(url_for(f"/api/flags/{exploit_name}"), json=flags, timeout=10)
-        if res.status_code != 200:
-            wprint(highlight("Could not send flags, am I not authenticated?", YELLOW))
-        else:
-            flags.clear()
+        if res.status_code == 200:
+            return True
+        wprint(highlight("Could not send flags, am I not authenticated?", YELLOW))
     except ConnectionError:
         wprint(highlight("Could not send flags, I will send them later.", YELLOW))
+    return False
 
 
 def main():
@@ -245,6 +261,7 @@ def main():
     n_workers = os.cpu_count()
     deadline = cfg["tick_duration"] * 0.5
 
+    flags = []
     try:
         while True:
             print()
@@ -255,18 +272,22 @@ def main():
             wprint(f"Exploit failed on {fails} teams")
             if len(wave_flags) == 0:
                 wprint(highlight(f"Got 0 flags, something's broken!", YELLOW))
+            # send flags
             flags.extend(wave_flags)
-            send_flags(session)
+            if send_flags(session, flags):
+                flags.clear()  # only clear the flags array if we managed to send all the flags
+            # end wave and recompute parameters
             wave_time = time() - start
             wprint(f"Took {wave_time:.2f} seconds, recomputing parameters...")
             n_workers = compute_n_workers(n_workers, deadline, wave_time)
+            # wait for next the  wave to start
             wait_time = deadline - wave_time
             if wait_time > 0:
                 wprint(f"Sleeping for {wait_time:.2f}s")
                 sleep(wait_time)
             else:
                 wprint(highlight("Your exploit is very slow! Speed it up!", YELLOW))
-            get_config(session)  # Refresh config
+            get_config(session)  # refresh config
             wave += 1
     except KeyboardInterrupt:
         print("Ctrl+C detected, exiting...")
