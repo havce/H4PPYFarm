@@ -49,6 +49,7 @@ class FlagStore(Thread):
 
             req = self._requests.get()
             req_id = req["id"]
+            res = None
 
             match req["op"]:
                 case FlagStore._REGISTER_FLAGS:
@@ -58,10 +59,12 @@ class FlagStore(Thread):
                     self._register_submissions(req["submissions"], req["timestamp"])
 
                 case FlagStore._SELECT_FLAGS:
-                    self._responses[req_id] = self._select_flags_by_status(req["status"], req["count"])
+                    res = self._select_flags_by_status(req["status"], req["count"])
 
                 case FlagStore._SLICE:
-                    self._responses[req_id] = self._slice(req["start"], req["count"])
+                    res = self._slice(req["start"], req["count"])
+
+            self._responses[req_id] = res
 
         self._close_database()
 

@@ -80,8 +80,7 @@ class Config(object):
     @property
     def teams(self) -> list[str]:
         value = str(self._get_param("teams"))
-        match = Config._RANGE.search(value)
-        if match:
+        if match := Config._RANGE.search(value):
             assert len(match.groups()) == 1, f"Invalid range '{value}'"
             (start, end) = match.group(1).split("..")
             fmt = value

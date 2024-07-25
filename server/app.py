@@ -35,11 +35,11 @@ def auth_api() -> str:
         session["user"] = request.remote_addr
     else:
         abort(403)
-    return ""
+    return "OK"
 
 
 @app.route("/api/flags/<string:exp>", methods=["POST", "PUT"])
-def flags_put(exp: str = None):
+def flags_put(exp: str = None) -> str:
     if not verify_session():
         abort(403)
 
@@ -49,7 +49,7 @@ def flags_put(exp: str = None):
         flag_submitter.queue(exp, request.json)
     except json.JSONDecodeError:
         abort(400)
-    return ""
+    return "OK"
 
 
 @app.route("/api/flags", methods=["GET"])
