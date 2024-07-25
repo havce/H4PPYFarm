@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 
 import json
+import signal
 from flask import Flask, request, abort, session, redirect, send_from_directory, Response
 from config import cfg
 from flags import flag_store, flag_submitter
-from utils import error
-from waitress import serve
+from utils import error, info
+from waitress import create_server
 
 app = Flask(__name__)
 app.secret_key = cfg.secret_key
@@ -91,6 +92,15 @@ def config() -> str:
 if __name__ == "__main__":
     flag_store.start()
     flag_submitter.start()
-    serve(app, host="0.0.0.0", port=cfg.port)
-    flag_submitter.join()
-    flag_store.join()
+    server = create_server(app, host="0.0.0.0", port=cfg.port)
+
+    def stop(sig, _frame):
+        if sig == signal.SIGINT or sig == signal.SIGTERM:
+            info("Stopping server...")
+            server.close()
+            flag_submitter.join()
+            flag_store.join()
+
+    signal.signal(signal.SIGINT, stop)
+    signal.signal(signal.SIGTERM, stop)
+    server.run()
