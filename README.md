@@ -28,11 +28,11 @@ The possible configuration options are:
 | flag_format   | env, farm.yml   | [A-Z0-9]{31}=     | a regex expression that matches every flag                                                         |
 | database      | env, farm.yml   | :memory:          | a sqlite3 database path                                                                            |
 | secret_key    | env             | random            | the secret key used by Flask to encrypt sessions                                                   |
+| timeout       | env, farm.yml   | 10                | the time in seconds after which a request to the game system should timeout                        |
 | team_token    | env, farm.yml   | -                 | the team token to use when posting flags to the game system (only used for the HTTP protocol)      |
 | system_url    | env, farm.yml   | -                 | the URL to which the server should try and send the flags to (it must specify a protocol with ://) |
 | teams         | env, farm.yml   | -                 | the addresses of every team in the game, expressed as a range                                      |
 | password      | env, farm.yml   | -                 | the password needed to access the server                                                           |
-| timeout       | env, farm.yml   | 10                | the time in seconds after which a request to the game system should timeout                        |
 
 > [!NOTE]
 > When passing a configuration option as:
