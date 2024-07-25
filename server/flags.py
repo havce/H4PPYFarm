@@ -297,7 +297,7 @@ class FlagSubmitterTcp(FlagSubmitter):
     def __init__(self, store: FlagStore):
         super().__init__(store)
         self._flag_format = re.compile(cfg.flag_format)
-        ip_and_port = FlagSubmitter.SYSTEM_URL.split("://")[1].split(":")
+        ip_and_port = FlagSubmitter.SYSTEM_URL.split("://", 1)[1].split(":", 1)
         ip = ip_and_port[0]
         port = ip_and_port[1] if len(ip_and_port) > 1 else 1337
         try:
