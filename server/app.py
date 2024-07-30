@@ -32,6 +32,13 @@ def auth() -> Response:
     return send_from_directory("static", "html/auth.html")
 
 
+@app.route("/script", methods=["GET"])
+def script() -> Response:
+    if verify_session():
+        return send_from_directory("static", "files/start_sploit.py", as_attachment=True)
+    return redirect("/auth")
+
+
 @app.route("/api/auth", methods=["POST"])
 def auth_api() -> str:
     if request.is_json and request.json["password"] == cfg.password:

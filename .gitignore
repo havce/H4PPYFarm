@@ -1,5 +1,6 @@
 **/__pycache__/
 **/farm.yml
+**/.env
 .venv/
 .idea/
-.env
+server/static/files
