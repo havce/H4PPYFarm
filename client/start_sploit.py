@@ -12,7 +12,8 @@ from concurrent.futures import ThreadPoolExecutor
 
 
 # global configuration
-cfg = {}
+params = {}  # client configuration
+cfg = {}     # server configuration
 
 # wave state
 wave = 1
@@ -69,7 +70,7 @@ def get_arg(arg_name: str, default: str | int | None, is_switch: bool) -> str | 
 
 
 def parse_args():
-    global cfg
+    global params
 
     if "--help" in sys.argv:
         usage()
@@ -88,14 +89,14 @@ def parse_args():
             arg_val = default
         elif isinstance(default, int | float):
             arg_val = float(arg_val)
-        cfg[arg] = arg_val
-    cfg["exploit"] = os.path.join("./", sys.argv[-1])
+        params[arg] = arg_val
+    params["exploit"] = os.path.join("./", sys.argv[-1])
 
 
 def url_for(endpoint) -> str:
-    global cfg
+    global params
 
-    url = cfg["server-url"]
+    url = params["server-url"]
     if not (url.startswith("http") and "://" in url):
         url = f"http://{url}"
     # this is probably not needed
@@ -107,12 +108,12 @@ def url_for(endpoint) -> str:
 
 
 def authenticate() -> Session:
-    global cfg
+    global params
 
-    print(f"Authenticating on {url_for('/api/auth')} with password ({'*' * len(cfg['server-pass'])})...")
+    print(f"Authenticating on {url_for('/api/auth')} with password ({'*' * len(params['server-pass'])})...")
     try:
         session = Session()
-        res = session.post(url_for("/api/auth"), json={"password": cfg["server-pass"]})
+        res = session.post(url_for("/api/auth"), json={"password": params["server-pass"]})
         if res.status_code != 200:
             print(highlight("Authentication failed. Is the server password correct?", RED))
             exit(-1)
@@ -147,9 +148,9 @@ def get_config(session: Session):
 
 
 def check_exploit():
-    global cfg
+    global params
 
-    exploit = cfg["exploit"]
+    exploit = params["exploit"]
     print(f"Checking exploit '{exploit}'...")
     try:
         with open(exploit, "r") as f:
@@ -163,16 +164,16 @@ def check_exploit():
 
 
 def run_exploit(team: str) -> list[dict[str, str | float]] | None:
-    global failure_counters, cfg
+    global failure_counters, params, cfg
 
-    failure_threshold = cfg["failure-threshold"]
+    failure_threshold = params["failure-threshold"]
     if randint(0, failure_counters[team]) > failure_threshold:
         # decrease the possibility of running the exploit on teams on which the exploit seems to fail the most
         wprint(highlight(f"Not running exploit on {team} (too many failures)", YELLOW))
         return None
     flag_format = cfg["flag_format"]
-    exploit = cfg["exploit"]
-    timeout = cfg["timeout"] if cfg["timeout"] > 1 else 1
+    exploit = params["exploit"]
+    timeout = params["timeout"] if params["timeout"] > 1 else 1
     args = ["python3", exploit, team]
 
     try:
@@ -195,7 +196,7 @@ def run_exploit(team: str) -> list[dict[str, str | float]] | None:
         wprint(highlight(f"Exploit crashed on team {team}!", RED))
     except TimeoutExpired:
         wprint(highlight(f"Exploit timed-out on team {team}!", YELLOW))
-    if failure_counters[team] < cfg["max-failures"]:
+    if failure_counters[team] < params["max-failures"]:
         failure_counters[team] += 1
     return None
 
@@ -235,10 +236,10 @@ def run_exploit_on_teams(n_workers: int) -> (float, list[dict[str, str | float]]
 
 
 def send_flags(session: Session, flags: list[str]) -> bool:
-    global cfg
+    global params
 
     try:
-        exploit = cfg["exploit"]
+        exploit = params["exploit"]
         exploit_name, _ = os.path.basename(exploit).split(".", 1)
         res = session.post(url_for(f"/api/flags/{exploit_name}"), json=flags, timeout=10)
         if res.status_code == 200:
