@@ -15,6 +15,7 @@ services:
       - FARM_TEAMS=${TEAMS}
       - FARM_PASSWORD=${PASSWORD}
       - FARM_SECRET_KEY=${SECRET_KEY}
+      - FARM_DEBUG=${DEBUG}
       - FARM_DATABASE=/happy-db/flags.db
     volumes:
       - happy-db:/happy-db

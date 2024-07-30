@@ -2,6 +2,8 @@
 
 import json
 import signal
+import os
+
 from flask import Flask, request, abort, session, redirect, send_from_directory, Response
 from config import cfg
 from flags import flag_store, flag_submitter
@@ -92,15 +94,18 @@ def config() -> str:
 if __name__ == "__main__":
     flag_store.start()
     flag_submitter.start()
-    server = create_server(app, host="0.0.0.0", port=cfg.port)
+    if os.getenv("FARM_DEBUG"):
+        app.run(host="0.0.0.0", port=cfg.port)
+    else:
+        server = create_server(app, host="0.0.0.0", port=cfg.port)
 
-    def stop(sig, _frame):
-        if sig == signal.SIGINT or sig == signal.SIGTERM:
-            info("Stopping server...")
-            server.close()
-            flag_submitter.join()
-            flag_store.join()
+        def stop(sig, _frame):
+            if sig == signal.SIGINT or sig == signal.SIGTERM:
+                info("Stopping server...")
+                server.close()
+                flag_submitter.join()
+                flag_store.join()
 
-    signal.signal(signal.SIGINT, stop)
-    signal.signal(signal.SIGTERM, stop)
-    server.run()
+        signal.signal(signal.SIGINT, stop)
+        signal.signal(signal.SIGTERM, stop)
+        server.run()
