@@ -33,6 +33,8 @@ The possible configuration options are:
 | system_url    | env, farm.yml   | -                 | the URL to which the server should try and send the flags to (it must specify a protocol with ://) |
 | teams         | env, farm.yml   | -                 | the addresses of every team in the game, expressed as a range                                      |
 | password      | env, farm.yml   | -                 | the password needed to access the server                                                           |
+| hfi_source    | env, farm.yml   | ./hfi             | the path to the source root of the hfi executable                                                  |
+| hfi_cache     | env, farm.yml   | ./hfi-cache       | the path to the directory to be used to store the hfi binaries                                     |
 
 > [!NOTE]
 > When passing a configuration option as:

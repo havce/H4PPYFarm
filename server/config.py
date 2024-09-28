@@ -5,6 +5,7 @@ from os import getenv
 from utils import info, warning, error
 
 defaults = {
+    "address": "0.0.0.0",
     "port": 6969,
     "flag_lifetime": 5,
     "tick_duration": 120,
@@ -12,12 +13,14 @@ defaults = {
     "batch_limit": 1000,
     "database": ":memory:",
     "flag_format": "[A-Z0-9]{31}=",
-    "timeout": 10
+    "timeout": 10,
+    "hfi_source": "./hfi",
+    "hfi_cache": "./hfi-cache"
 }
 
 
 class Config(object):
-    _RANGE = re.compile("{([0-9]*\\.\\.[0-9]*)}")
+    _RANGE = re.compile("{([0-9]+\\.\\.[0-9]+)}")
 
     def __init__(self):
         self._cfg_file = None

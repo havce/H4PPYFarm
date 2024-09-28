@@ -1,6 +1,6 @@
 services:
   happy-farm:
-    build: ./server
+    build: .
     image: happy-farm
     ports:
       - 6969:6969
@@ -17,7 +17,10 @@ services:
       - FARM_SECRET_KEY=${SECRET_KEY}
       - FARM_DEBUG=${DEBUG}
       - FARM_DATABASE=/happy-db/flags.db
+      - FARM_HFI_CACHE=/hfi-bin
+      - FARM_HFI_SOURCE=/hfi-src
     volumes:
       - happy-db:/happy-db
+      - hfi-cache:/hfi-bin
 volumes:
   happy-db:

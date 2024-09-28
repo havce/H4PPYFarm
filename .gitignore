@@ -4,3 +4,4 @@
 .venv/
 .idea/
 server/static/files
+hfi/target

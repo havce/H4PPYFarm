@@ -1,0 +1,13 @@
+[package]
+name = "hfi"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+pk9 = { version = "0.1.1", git = "https://github.com/markx86/pk9.git", default-features = false, features = ["tcp", "output"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+curl = { version = "0.4", default-features = false, features = ["static-curl", "rustls"] }
+sysinfo = { version = "0.31", default-features = false, features = ["system"] }

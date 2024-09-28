@@ -4,12 +4,11 @@ import select
 
 import requests
 import socket
-import sqlite3
-from queue import Queue
-from threading import Thread, get_ident
+from threading import Thread
 from time import time, sleep
 from config import cfg
-from utils import info, warning, error, thread_yield
+from db import db
+from utils import info, warning, error
 
 
 PENDING = 0
@@ -30,43 +29,12 @@ class FlagStore(Thread):
     def __init__(self):
         super().__init__()
         self._run = False
-        self._requests = Queue()
-        self._responses = {}
-        self._db = None
-        self._cur = None
 
     def run(self):
-        self._open_database()
-
-        last_cleanup = time()
+        FlagStore._create_table()
         while self._run:
-            if self._requests.qsize() == 0:
-                if time() - last_cleanup > 10:
-                    self._mark_expired()
-                    last_cleanup = time()
-                thread_yield()
-                continue
-
-            req = self._requests.get()
-            req_id = req["id"]
-            res = None
-
-            match req["op"]:
-                case FlagStore._REGISTER_FLAGS:
-                    self._register_flags(req["flag"], req["exploit"])
-
-                case FlagStore._REGISTER_SUBMISSION:
-                    self._register_submissions(req["submissions"], req["timestamp"])
-
-                case FlagStore._SELECT_FLAGS:
-                    res = self._select_flags_by_status(req["status"], req["count"])
-
-                case FlagStore._SLICE:
-                    res = self._slice(req["start"], req["count"])
-
-            self._responses[req_id] = res
-
-        self._close_database()
+            sleep(5)
+            self._mark_expired()
 
     def start(self):
         self._run = True
@@ -76,10 +44,9 @@ class FlagStore(Thread):
         self._run = False
         super().join(**kwargs)
 
-    def _open_database(self):
-        self._db = sqlite3.connect(cfg.database)
-        self._cur = self._db.cursor()
-        self._cur.execute("""
+    @staticmethod
+    def _create_table():
+        db.execute("""
         CREATE TABLE IF NOT EXISTS flags (
             flag                 VARCHAR(64) NOT NULL,
             exploit              VARCHAR(64),
@@ -89,51 +56,29 @@ class FlagStore(Thread):
             system_message       VARCHAR(128),
             PRIMARY KEY (flag)
         )""")
-        self._db.commit()
+        db.commit()
 
-    def _close_database(self):
-        self._db.commit()
-        self._db.close()
-
-    def _mark_expired(self):
+    @staticmethod
+    def _mark_expired():
         now = time()
-        self._cur.execute(f"""
+        db.execute(f"""
         UPDATE flags
         SET status = {EXPIRED}, submission_timestamp = {now}, system_message = 'Expired'
         WHERE status = {PENDING} AND timestamp + ? <= {now}
         """, (FlagStore.FLAG_LIFETIME,))
-        self._db.commit()
+        db.commit()
 
-    def _request_sync(self, op: int, data: dict[str, int | str | list]) -> list | None:
-        req_id = get_ident()
-        data["op"] = op
-        data["id"] = req_id
-        self._requests.put(data)
-        while not (req_id in self._responses):
-            thread_yield()
-        return self._responses.pop(req_id, None)
-
-    def register_flags(self, flags: list[dict[str, str | float]], exploit: str):
-        self._request_sync(FlagStore._REGISTER_FLAGS, {
-            "flag": flags,
-            "exploit": exploit,
-        })
-
-    def _register_flags(self, flags: list[dict[str, str | float]], exploit: str):
+    @staticmethod
+    def register_flags(flags: list[dict[str, str | float]], exploit: str):
         data = list(map(lambda x: (x["flag"], exploit, x["ts"], PENDING), flags))
-        self._cur.executemany("""
+        db.execute("""
         INSERT OR IGNORE INTO flags (flag, exploit, timestamp, status)
         VALUES (?, ?, ?, ?)
         """, data)
-        self._db.commit()
+        db.commit()
 
-    def register_submissions(self, submissions: list, timestamp: float):
-        self._request_sync(FlagStore._REGISTER_SUBMISSION, {
-            "submissions": submissions,
-            "timestamp": timestamp
-        })
-
-    def _register_submissions(self, submissions: list, timestamp: float):
+    @staticmethod
+    def register_submissions(submissions: list, timestamp: float):
         ts = math.floor(timestamp)
 
         def to_db_entry(sub) -> (int, int, str, str):
@@ -143,40 +88,26 @@ class FlagStore(Thread):
             return status, ts, message, sub["flag"]
 
         data = list(map(to_db_entry, submissions))
-        self._cur.executemany("""
+        db.execute("""
         UPDATE flags
         SET status = ?, submission_timestamp = ?, system_message = ?
         WHERE flag = ?
         """, data)
-        self._db.commit()
+        db.commit()
 
-    def select_flags_by_status(self, status: int, count: int) -> list[str]:
-        return self._request_sync(FlagStore._SELECT_FLAGS, {
-            "status": status,
-            "count": count
-        })
-
-    def _select_flags_by_status(self, status: int, count: int) -> list[str]:
-        res = self._cur.execute("""
+    @staticmethod
+    def select_flags_by_status(status: int, count: int) -> list[str]:
+        res = db.execute("""
         SELECT flag FROM flags WHERE status = ? LIMIT ?
         """, (status, count))
-        return list(map(lambda x: x[0], res.fetchall()))
+        return list(map(lambda x: x[0], res))
 
-    def slice(self, start: int, count: int) -> list[dict[str, str | float | int]]:
-        return self._request_sync(FlagStore._SLICE, {
-            "start": start,
-            "count": count
-        })
-
-    def _slice(self, start: int, count: int) -> list[dict[str, str | float | int]]:
-        res = self._cur.execute("""
-        SELECT * FROM flags ORDER BY timestamp DESC LIMIT ? OFFSET ?
-        """, (count, start))
-        sliced = []
-        for (flag, exploit, timestamp, status, submission_timestamp, system_message) in res.fetchall():
+    @staticmethod
+    def slice(start: int, count: int) -> list[dict[str, str | float | int]]:
+        def f(flag, exploit, timestamp, status, submission_timestamp, system_message):
             lifetime = submission_timestamp if submission_timestamp else time()
             lifetime -= timestamp
-            sliced.append({
+            return {
                 "flag": flag,
                 "exploit": exploit,
                 "timestamp": timestamp,
@@ -184,8 +115,11 @@ class FlagStore(Thread):
                 "status": status,
                 "submission_timestamp": submission_timestamp,
                 "system_message": system_message
-            })
-        return sliced
+            }
+
+        return db.execute("""
+        SELECT * FROM flags ORDER BY timestamp DESC LIMIT ? OFFSET ?
+        """, (count, start), f)
 
 
 class FlagSubmitter(Thread):
@@ -195,10 +129,9 @@ class FlagSubmitter(Thread):
     TIMEOUT = cfg.timeout
     FLAG_FORMAT = re.compile(f"^{cfg.flag_format}$")
 
-    def __init__(self, store: FlagStore):
+    def __init__(self):
         super().__init__()
         self._run = False
-        self._store = store
 
     def start(self):
         self._run = True
@@ -219,18 +152,19 @@ class FlagSubmitter(Thread):
         entries = self._normalize_user_submitted_data(flags)
         info(f"Submitted {len(entries)} valid flags from exploit '{exploit}'")
         entries = list(filter(lambda x: now - x["ts"] < FlagStore.FLAG_LIFETIME, map(ensure_ts, entries)))
-        self._store.register_flags(entries, exploit)
+        FlagStore.register_flags(entries, exploit)
 
     def run(self):
         while self._run:
-            batch = self._next_batch()
+            batch = FlagSubmitter._next_batch()
             if len(batch) == 0 or not self._submit(batch):
                 sleep(5)  # on idle or on failure, retry after 5 seconds
                 continue
             sleep(FlagSubmitter.SUBMIT_PERIOD)
 
-    def _next_batch(self) -> list[str]:
-        return self._store.select_flags_by_status(PENDING, FlagSubmitter.BATCH_LIMIT)
+    @staticmethod
+    def _next_batch() -> list[str]:
+        return FlagStore.select_flags_by_status(PENDING, FlagSubmitter.BATCH_LIMIT)
 
     @staticmethod
     def _normalize_user_submitted_data(submissions) -> list[dict[str, str | float]]:
@@ -250,7 +184,7 @@ class FlagSubmitter(Thread):
         if submissions:
             assert isinstance(submissions, list), "FlagSubmitter.do_submit() should always return a list"
             info(f"Submitted {len(flags)} flags to {FlagSubmitter.SYSTEM_URL}")
-            self._store.register_submissions(submissions, ts)
+            FlagStore.register_submissions(submissions, ts)
             return True
         return False
 
@@ -259,8 +193,8 @@ class FlagSubmitter(Thread):
 
 
 class FlagSubmitterHttp(FlagSubmitter):
-    def __init__(self, store: FlagStore):
-        super().__init__(store)
+    def __init__(self):
+        super().__init__()
         self._team_token = cfg.team_token
         self._message_regex = re.compile(f"\\[{cfg.flag_format}]", re.MULTILINE)
 
@@ -294,8 +228,8 @@ class FlagSubmitterHttp(FlagSubmitter):
 
 
 class FlagSubmitterTcp(FlagSubmitter):
-    def __init__(self, store: FlagStore):
-        super().__init__(store)
+    def __init__(self):
+        super().__init__()
         self._flag_format = re.compile(cfg.flag_format)
         ip_and_port = FlagSubmitter.SYSTEM_URL.split("://", 1)[1].split(":", 1)
         ip = ip_and_port[0]
@@ -351,16 +285,16 @@ class FlagSubmitterTcp(FlagSubmitter):
             return None
 
 
-def get_flag_submitter(store: FlagStore) -> FlagSubmitterTcp | FlagSubmitterHttp:
+def get_flag_submitter() -> FlagSubmitterTcp | FlagSubmitterHttp:
     sys_url = FlagSubmitter.SYSTEM_URL
     proto = sys_url.split("://")[0]
     if proto.startswith("http"):
-        return FlagSubmitterHttp(store)
+        return FlagSubmitterHttp()
     elif proto.startswith("tcp"):
-        return FlagSubmitterTcp(store)
+        return FlagSubmitterTcp()
     else:
         assert False, f"Unsupported protocol {proto}"
 
 
 flag_store = FlagStore()
-flag_submitter = get_flag_submitter(flag_store)
+flag_submitter = get_flag_submitter()
