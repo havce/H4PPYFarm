@@ -1,7 +1,7 @@
 import os
 import shutil
 import subprocess
-from subprocess import CalledProcessError, DEVNULL
+from subprocess import CalledProcessError
 
 from config import cfg
 from utils import error, info, warning
@@ -29,28 +29,34 @@ class HfiManager(object):
         db.commit()
 
     @staticmethod
-    def get_checkers() -> dict[int, list[int]]:
-        services = {}
-        def f(port, delta):
-            if not (port in services):
-                services[port] = [delta]
-            else:
-                services[port].append(delta)
-        db.execute("SELECT port, delta FROM hfi", f=f)
+    def get_checkers() -> list[dict[str, str | int]]:
+        services = []
+        def f(service_name, port, delta):
+            services.append({
+                "service": service_name,
+                "port": port,
+                "delta": delta
+            })
+        db.execute("SELECT service_name, port, delta FROM hfi", f=f)
         return services
 
     @staticmethod
-    def add_checkers(checkers: list[dict[str, str | int]]):
-        data = []
-        for checker in checkers:
-            service = checker.get("service", "unknown")
-            port = checker["port"]
-            delta = checker["delta"]
-            data.append((service, port, delta))
+    def add_checker(checker: dict[str, str | int]):
+        service = checker.get("service", "unknown")
+        port = checker["port"]
+        delta = checker["delta"]
         db.execute("""
         INSERT OR IGNORE INTO hfi (service_name, port, delta)
         VALUES (?, ?, ?)
-        """, data)
+        """, (service, port, delta))
+        db.commit()
+
+    @staticmethod
+    def remove_checker(checker: dict[str, int]):
+        delta = checker["delta"]
+        db.execute("""
+        DELETE FROM hfi WHERE delta = ?
+        """, (delta,))
         db.commit()
 
     @staticmethod
@@ -94,7 +100,8 @@ class HfiManager(object):
         except CalledProcessError as exc:
             error(f"Could not compile hfi for triple {triple}")
             if exc.output:
-                error(exc.output)
+                for line in exc.output.decode().split("\n"):
+                    warning(line)
             return False
 
     @staticmethod
@@ -109,9 +116,10 @@ class HfiManager(object):
 
     @staticmethod
     def timestamp(req_os: str, req_arch: str) -> int | None:
-        path = HfiManager._get_bin_path(req_os, req_arch)
         try:
-            stat_data = os.stat(path)
-            return int(stat_data.st_mtime)
+            if path := HfiManager._get_bin_path(req_os, req_arch):
+                stat_data = os.stat(path)
+                return int(stat_data.st_mtime)
         except OSError:
-            return None
+            pass
+        return None

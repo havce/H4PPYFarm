@@ -24,3 +24,4 @@ services:
       - hfi-cache:/hfi-bin
 volumes:
   happy-db:
+  hfi-cache:

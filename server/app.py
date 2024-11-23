@@ -126,25 +126,30 @@ def config() -> str:
 def hfi() -> str:
     if not verify_session():
         abort(403)
-    if request.method == "GET":
-        try:
-            return json.dumps({
-                "checkers": HfiManager.get_checkers()
-            })
-        except Exception as exc:
-            error("An error occurred while converting data for HFI to json")
-            error(exc)
-            abort(500)
-    else:
+
+    if request.method == "POST":
         if not request.is_json:
             abort(400)
         try:
-            HfiManager.add_checkers(request.json)
-            return "OK"
+            json_data = request.json
+            if isinstance(json_data, dict):
+                if json_data.get("remove", False):
+                    HfiManager.remove_checker(json_data)
+                else:
+                    HfiManager.add_checker(json_data)
+            else:
+                abort(400)
         except Exception as exc:
             error("An error occurred while adding checkers")
             error(exc)
             abort(500)
+
+    try:
+        return json.dumps(HfiManager.get_checkers())
+    except Exception as exc:
+        error("An error occurred while converting data for HFI to json")
+        error(exc)
+        abort(500)
 
 
 

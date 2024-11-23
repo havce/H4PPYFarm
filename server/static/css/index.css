@@ -31,7 +31,7 @@ td {
 }
 
 .controls input {
-    margin: 16px;
+    margin-top: 16px;
     float: left;
     width: 40px;
     height: 32px;
@@ -69,4 +69,28 @@ th.status, th.lifetime {
 
 th.timestamp, th.submission-timestamp {
     width: 300px;
+}
+
+#add-checker-form {
+    float: left;
+}
+
+#remove-checker-form {
+    float: right;
+}
+
+#port {
+    width: 75px;
+}
+
+#delta {
+    width: 125px;
+}
+
+#service {
+    width: 150px;
+}
+
+hr {
+    clear: both;
 }
