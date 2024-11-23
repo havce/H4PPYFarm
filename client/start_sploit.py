@@ -213,7 +213,7 @@ def get_persistent_dir() -> str:
     return pers_dir
 
 
-def get_hfi(session: Session) -> str:
+def get_hfi(session: Session) -> str | None:
     global params, this_os, this_arch
 
     hfi_url = url_for(f"/hfi/{this_os}/{this_arch}")
@@ -246,8 +246,7 @@ def get_hfi(session: Session) -> str:
     res = session.get(hfi_url)
     if res.status_code != 200:
         print(highlight("Could not get hfi executable from server", RED))
-        print(highlight(f"Server message: {res.text}", RED))
-        exit(-1)
+        return None
 
     # save the file
     try:
@@ -265,13 +264,17 @@ def get_hfi(session: Session) -> str:
     except FileNotFoundError | OSError:
         print(highlight(f"Could not write executable to {exe_path}!", RED))
         print(highlight("Does the current user have access to it?", YELLOW))
-    exit(-1)
+    return None
 
 
 def launch_hfi(session: Session):
     global params
 
-    hfi_path = get_hfi(session)
+    if not (hfi_path := get_hfi(session)):
+        print(highlight("Could not get TCP packet interceptor. Continue anyways? [y/N]", YELLOW))
+        if (input() or "n").lower() != "y":
+            exit(-1)
+
     temp_dir = get_temporary_dir()
     log_file = f"hfi-log-{int(time())}"
     log_path = os.path.join(temp_dir, log_file)
@@ -281,10 +284,11 @@ def launch_hfi(session: Session):
 
     try:
         with open(log_path, "wb") as log_fd:
+            print(highlight(f"TCP packet interceptor log @ {log_path}", CYAN))
             proc = Popen(args, stdout=log_fd, stderr=log_fd, start_new_session=True)
             proc.wait(0.5)
             if proc.returncode != 0:
-                print(highlight("Could not launch hfi executable", RED))
+                print(highlight("Could not launch TCP packet interceptor", RED))
                 exit(-1)
     except TimeoutExpired:
         pass
