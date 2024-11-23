@@ -6,6 +6,7 @@ import requests
 import socket
 from threading import Thread
 from time import time, sleep
+
 from config import cfg
 from db import db
 from utils import info, warning, error
@@ -243,54 +244,51 @@ class FlagSubmitterTcp(FlagSubmitter):
             warning("No port specified for TCP protocol, defaulting to 1337")
 
     @staticmethod
-    def _normalize_system_response_data(submissions: iter) -> list[dict[str, str | bool]]:
-        def to_normalized(sub: str) -> dict[str, str | bool]:
-            flag, message = sub.split(" ", 1)
-            status = message.upper().startswith("OK")
-            return {"flag": flag, "msg": message, "status": status}
-
-        return list(map(to_normalized, submissions))
+    def _normalize_system_response_data(response: str, flag: str) -> dict[str, str | bool]:
+        message = response.strip()
+        if " " in message:
+            # ENOWARS game systems sends back the flag and a message
+            flag, message = response.split(" ", 1)
+        status = message in "OK"
+        return {"flag": flag, "msg": message, "status": status}
 
     def do_submit(self, flags: list[str]) -> list[dict[str, str | bool]] | None:
         try:
             sock = socket.create_connection(self._address, timeout=FlagSubmitter.TIMEOUT)
-            sock.setblocking(False)
-            payload = "\n".join(flags)
-            sock.sendall(payload.encode())
             submissions = []
-            buf = b""
-            while len(submissions) < len(flags):
-                try:
-                    ready = select.select([sock], [], [], 10)
-                    if ready[0]:
-                        buf += sock.recv(4096)
-                except TimeoutError:
-                    pass
-                if len(buf) == 0:
-                    # client has disconnected?
-                    break
-                recv_flags = buf.split(b"\n")
-                buf = recv_flags.pop()
-                full_flags = map(lambda x: x.decode(), recv_flags)
-                full_flags = filter(lambda x: self._flag_format.search(x), full_flags)
-                submissions.extend(full_flags)
+            for flag in flags:
+                sock.send(flag.encode())
+                ready = select.select([sock], [], [], FlagSubmitter.TIMEOUT)
+                if ready[0]:
+                    # we assume the server will not reply with more than 4096 bytes of data at a time
+                    resp = sock.recv(4096)
+                    if len(resp) == 0:
+                        # the client has disconnected, abort
+                        break
+                    try:
+                        response = resp.decode()
+                    except UnicodeDecodeError:
+                        # invalid system response
+                        response = "UNKNOWN"
+                    submission = FlagSubmitterTcp._normalize_system_response_data(response, flag)
+                    submissions.append(submission)
             sock.close()
             if len(submissions) == 0:
                 return None
             elif len(submissions) < len(flags):
                 warning("Server returned less flags than the ones I submitted")
-            return self._normalize_system_response_data(submissions)
+            return submissions
         except TimeoutError:
             error(f"Server connection timed-out ({self._address[0]}:{self._address[1]})")
             return None
 
 
-def get_flag_submitter() -> FlagSubmitterTcp | FlagSubmitterHttp:
+def get_flag_submitter() -> FlagSubmitter:
     sys_url = FlagSubmitter.SYSTEM_URL
     proto = sys_url.split("://")[0]
-    if proto.startswith("http"):
+    if proto == "http" or proto == "https":
         return FlagSubmitterHttp()
-    elif proto.startswith("tcp"):
+    elif proto == "tcp":
         return FlagSubmitterTcp()
     else:
         assert False, f"Unsupported protocol {proto}"
