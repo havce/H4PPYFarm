@@ -52,12 +52,10 @@ def hfi_get(req_os: str, req_arch: str) -> Response:
     abort(404)
 
 
-@app.get("/hfi/<string:req_os>/<string:req_arch>/timestamp")
-def hfi_timestamp(req_os: str, req_arch: str) -> str:
+@app.get("/hfi/timestamp")
+def hfi_timestamp() -> str:
     # in the user we don't trust pt. 2
-    req_os = os.path.basename(req_os)
-    req_arch = os.path.basename(req_arch)
-    timestamp = HfiManager.timestamp(req_os, req_arch)
+    timestamp = HfiManager.timestamp()
     if timestamp:
         return f'{{"timestamp": {timestamp}}}'
     abort(500)

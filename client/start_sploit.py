@@ -227,20 +227,26 @@ def get_hfi(session: Session) -> str | None:
         local_timestamp = int(stat_data.st_mtime)
         # get server version timestamp
         server_timestamp = None
-        res = session.get(f"{hfi_url}/timestamp")
+        res = session.get(url_for(f"/hfi/timestamp"))
         if res.status_code != 200:
             print(highlight(f"Cannot get hfi timestamp (error {res.status_code})", RED))
         else:
             try:
-                server_timestamp = res.json()["timestamp"]
+                server_timestamp = res.json().get("timestamp")
             except JSONDecodeError:
                 print(highlight("Invalid hfi timestamp", YELLOW))
+
+        print(server_timestamp, local_timestamp)
+        if server_timestamp and server_timestamp > local_timestamp:
+            print(highlight("New version of hfi found!", GREEN))
         # use the local version of the hfi, if we can't get a timestamp from the server or
         # if the local version is newer than the one on the server
-        if (not server_timestamp or server_timestamp <= local_timestamp) and os.access(exe_path, os.X_OK):
+        elif os.access(exe_path, os.X_OK):
             return exe_path
     except FileNotFoundError:
-        print(highlight("Local version of hfi not found! Downloading one from the server...", YELLOW))
+        print(highlight("Local version of hfi not found!", YELLOW))
+
+    print(highlight("Downloading hfi from server...", YELLOW))
 
     # download hfi
     res = session.get(hfi_url)
@@ -271,9 +277,10 @@ def launch_hfi(session: Session):
     global params
 
     if not (hfi_path := get_hfi(session)):
-        print(highlight("Could not get TCP packet interceptor. Continue anyways? [y/N]", YELLOW))
+        print(highlight("Cannot fake timestamps. Continue anyways? [y/N]", YELLOW), end=" > ")
         if (input() or "n").lower() != "y":
             exit(-1)
+        return
 
     temp_dir = get_temporary_dir()
     log_file = f"hfi-log-{int(time())}"

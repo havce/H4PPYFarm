@@ -14,8 +14,8 @@ defaults = {
     "database": ":memory:",
     "flag_format": "[A-Z0-9]{31}=",
     "timeout": 10,
-    "hfi_source": "./hfi",
-    "hfi_cache": "./hfi-cache"
+    "hfi_source": "../hfi",
+    "hfi_cache": "../hfi-cache"
 }
 
 

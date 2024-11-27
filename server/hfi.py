@@ -60,14 +60,15 @@ class HfiManager(object):
         db.commit()
 
     @staticmethod
-    def _get_bin_path(req_os: str, req_arch: str) -> str | None:
+    def _get_bin_path(req_os: str, req_arch: str) -> str:
         bin_path = os.path.join(HfiManager._CACHE, f"hfi-{req_os}-{req_arch}")
         if req_os == "windows":
             bin_path += ".exe"
-        src_path = HfiManager._get_src_path()
-        if not os.access(bin_path, os.R_OK) or os.stat(bin_path).st_mtime < os.stat(src_path).st_mtime:
-            if not HfiManager._compile_bin(req_os, req_arch, src_path, bin_path):
-                return None
+        return bin_path
+
+    @staticmethod
+    def _get_cached_build(req_os: str, req_arch: str):
+        bin_path = HfiManager._get_bin_path(req_os, req_arch)
         return bin_path if os.access(bin_path, os.R_OK) else None
 
     @staticmethod
@@ -76,22 +77,32 @@ class HfiManager(object):
         return HfiManager._SOURCE
 
     @staticmethod
+    def _get_src_dir() -> str:
+        src_dir = os.path.join(HfiManager._get_src_path(), "src")
+        assert os.access(src_dir, os.R_OK)
+        return src_dir
+
+    @staticmethod
     def _get_target_triple(req_os: str, req_arch: str) -> str | None:
         if triples_for_os := HfiManager._TARGETS.get(req_os):
             return triples_for_os.get(req_arch)
         return None
 
     @staticmethod
-    def _compile_bin(req_os: str, req_arch: str, src_path: str, bin_path: str) -> bool:
+    def _compile_bin(req_os: str, req_arch: str) -> bool:
         if not (triple := HfiManager._get_target_triple(req_os, req_arch)):
             error(f"No target triple exists for {req_os}/{req_arch}")
             return False
+        else:
+            info(f"Compiling hfi for {req_os}/{req_arch}")
         args = [
             "cargo",
             "build",
             "--release",
             "--target", triple
         ]
+        bin_path = HfiManager._get_bin_path(req_os, req_arch)
+        src_path = HfiManager._get_src_path()
         try:
             subprocess.check_output(args, cwd=src_path, stderr=subprocess.STDOUT)
             artifact_path = os.path.join(src_path, "target", triple, "release", "hfi")
@@ -105,19 +116,25 @@ class HfiManager(object):
             return False
 
     @staticmethod
-    def get(req_os: str, req_arch: str) -> str | None:
-        bin_path = HfiManager._get_bin_path(req_os, req_arch)
+    def get(req_os: str, req_arch: str, try_compile = True) -> str | None:
+        bin_path = HfiManager._get_cached_build(req_os, req_arch)
         if bin_path:
             info(f"Found hfi build for {req_os}/{req_arch}")
-            return bin_path
-        else:
-            warning(f"No hfi build found for {req_os}/{req_arch}")
-            return None
+            src_dir = HfiManager._get_src_dir()
+            if os.stat(bin_path).st_mtime >= os.stat(src_dir).st_mtime:
+                return bin_path
+        if try_compile:
+            # if there is no build available or the cached version is out of date,
+            # rebuild hfi for the requested arch
+            if HfiManager._compile_bin(req_os, req_arch):
+                return HfiManager.get(req_os, req_arch, try_compile=False)
+        warning(f"No hfi build found for {req_os}/{req_arch}")
+        return None
 
     @staticmethod
-    def timestamp(req_os: str, req_arch: str) -> int | None:
+    def timestamp() -> int | None:
         try:
-            if path := HfiManager._get_bin_path(req_os, req_arch):
+            if path := HfiManager._get_src_dir():
                 stat_data = os.stat(path)
                 return int(stat_data.st_mtime)
         except OSError:
