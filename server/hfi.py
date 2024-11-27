@@ -13,7 +13,7 @@ class HfiManager(object):
     _CACHE = cfg.hfi_cache
     _TARGETS = {
         "linux": {
-            "x86_64": "x86_64-unknown-linux-gnu"
+            "x86_64": "x86_64-unknown-linux-musl"
         }
     }
 

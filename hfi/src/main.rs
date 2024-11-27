@@ -17,21 +17,51 @@ const BUSY_WAIT_INTERVAL: u64 = 10; // in milli-secs
 const MAX_IDLE_TIME: u64 = 1; // in minutes
 
 #[derive(Deserialize)]
+#[allow(dead_code)]
+struct HfiService {
+    service: String,
+    port: u16,
+    delta: u64,
+}
+
+#[derive(Deserialize)]
+#[serde(transparent)]
 struct HfiConfig {
-    checkers: HashMap<u16, Vec<u64>>,
+    checkers: Vec<HfiService>,
 }
 
 impl HfiConfig {
-    fn get_ports(&self, blacklist: &mut HashSet<u16>) -> Vec<Port> {
-        let mut ports = Vec::new();
-        for port in self.checkers.keys() {
-            if !blacklist.contains(port) {
+    fn get_diff_ports(&self, blacklist: &mut HashSet<u16>) -> (Vec<Port>, Vec<Port>) {
+        let new_ports: Vec<u16> = self.checkers.iter().map(|c| c.port).collect();
+        let mut added_ports = Vec::new();
+        let mut removed_ports = Vec::new();
+        for port in new_ports.iter() {
+            if !blacklist.contains(&port) {
                 blacklist.insert(*port);
                 let port = Port(*port, Protocol::TCP);
-                ports.push(port);
+                added_ports.push(port);
             }
         }
-        ports
+        for port in blacklist.clone().iter() {
+            if !new_ports.contains(port) {
+                blacklist.remove(port);
+                let port = Port(*port, Protocol::TCP);
+                removed_ports.push(port);
+            }
+        }
+        (added_ports, removed_ports)
+    }
+
+    fn get_deltas_map(&self) -> HashMap<u16, Vec<u64>> {
+        let mut deltas_map: HashMap<u16, Vec<u64>> = HashMap::new();
+        for HfiService { port, delta, .. } in self.checkers.iter() {
+            if let Some(deltas) = deltas_map.get_mut(port) {
+                deltas.push(*delta);
+            } else {
+                deltas_map.insert(*port, vec![*delta]);
+            }
+        }
+        deltas_map
     }
 }
 
@@ -39,8 +69,8 @@ struct HfiActions {
     url: String,
     session: Easy,
     session_cookie: Option<String>,
-    config: Option<HfiConfig>,
-    added_ports: HashSet<u16>,
+    tracked_ports: HashSet<u16>,
+    deltas_map: HashMap<u16, Vec<u64>>,
     last_update: Instant,
     last_packet: Instant,
 }
@@ -59,17 +89,17 @@ impl HfiActions {
         // FIXME multithread configuration fetching and remove this
         session.timeout(Duration::from_millis(500)).unwrap();
         let session_cookie = None;
-        let config = None;
-        let added_ports = HashSet::new();
+        let tracked_ports = HashSet::new();
+        let deltas_map = HashMap::new();
         // FIXME dirty hack to immediately trigger the update_config() func
-        let last_update = Instant::now().sub(Duration::from_secs(CFG_UPDATE_INTERVAL));
         let last_packet = Instant::now();
+        let last_update = last_packet.sub(Duration::from_secs(CFG_UPDATE_INTERVAL));
         Self {
             url,
             session,
             session_cookie,
-            config,
-            added_ports,
+            tracked_ports,
+            deltas_map,
             last_update,
             last_packet,
         }
@@ -112,12 +142,13 @@ impl HfiActions {
         self.session_cookie = session_cookie;
     }
 
-    fn update_config(&mut self) {
+    fn update_config(&mut self) -> Result<Option<HfiConfig>, Error> {
+        let mut config = None;
         if let Some(session_cookie) = self.session_cookie.clone() {
             let mut json: Vec<u8> = Vec::new();
-            self.session.url(&self.url_for("/api/hfi")).unwrap();
-            self.session.get(true).unwrap();
-            self.session.cookie(&session_cookie).unwrap();
+            self.session.url(&self.url_for("/api/hfi"))?;
+            self.session.get(true)?;
+            self.session.cookie(&session_cookie)?;
             {
                 let mut transfer = self.session.transfer();
                 transfer
@@ -126,10 +157,10 @@ impl HfiActions {
                         Ok(data.len())
                     })
                     .unwrap();
-                transfer.perform().unwrap();
+                transfer.perform()?;
             }
-            self.config = serde_json::from_slice::<HfiConfig>(&json).ok();
-            if self.config.is_none() {
+            config = serde_json::from_slice::<HfiConfig>(&json).ok();
+            if config.is_none() {
                 eprintln!("[!] server responded with invalid json");
             } else {
                 println!("[+] config updated successfully");
@@ -138,6 +169,7 @@ impl HfiActions {
             eprintln!("[!] not authenticated");
         }
         self.last_update = Instant::now();
+        Ok(config)
     }
 }
 
@@ -148,13 +180,25 @@ impl Actions for HfiActions {
         } else {
             // FIXME this should probably be in another thread
             println!("[*] updating config...");
-            self.update_config();
-            if let Some(config) = &self.config {
-                let ports = config.get_ports(&mut self.added_ports);
-                if ports.len() > 0 {
-                    match port_manager.add_ports(&ports) {
-                        Ok(()) => (),
-                        Err(e) => eprintln!("[!] could not add ports to filter: {e}"),
+            match self.update_config() {
+                Err(e) => eprintln!("[!] could not update config: {e}"),
+                Ok(config) => {
+                    if let Some(config) = config {
+                        let (added_ports, removed_ports) =
+                            config.get_diff_ports(&mut self.tracked_ports);
+                        if added_ports.len() > 0 {
+                            match port_manager.add_ports(&added_ports) {
+                                Ok(()) => (),
+                                Err(e) => eprintln!("[!] could not add ports to filter: {e}"),
+                            }
+                        }
+                        if removed_ports.len() > 0 {
+                            match port_manager.remove_ports(&removed_ports) {
+                                Ok(()) => (),
+                                Err(e) => eprintln!("[!] could not remove ports from filter: {e}"),
+                            }
+                        }
+                        self.deltas_map = config.get_deltas_map();
                     }
                 }
             }
@@ -172,12 +216,11 @@ impl Actions for HfiActions {
         match l4_header {
             L4Header::TCP(header) => {
                 let dst = header.get_dst_port();
-                if let Some(config) = &self.config {
-                    if config.checkers.contains_key(&dst) {
-                        return Verdict::Transform;
-                    }
+                if self.tracked_ports.contains(&dst) {
+                    Verdict::Transform
+                } else {
+                    Verdict::Pass
                 }
-                Verdict::Pass
             }
         }
     }
@@ -187,9 +230,8 @@ impl Actions for HfiActions {
             pk9::L4Header::TCP(tcp) => {
                 let dst = tcp.get_dst_port();
                 if let Some(ts) = tcp.get_timestamp() {
-                    let new_ts = if let Some(config) = &self.config {
-                        if let Some(deltas) = config.checkers.get(&dst) {
-                            assert!(deltas.len() > 0);
+                    let new_ts = if let Some(deltas) = self.deltas_map.get(&dst) {
+                        if deltas.len() > 0 {
                             let now = SystemTime::now()
                                 .duration_since(UNIX_EPOCH)
                                 .unwrap()
