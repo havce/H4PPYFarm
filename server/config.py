@@ -20,7 +20,7 @@ defaults = {
 
 
 class Config(object):
-    _RANGE = re.compile("{([0-9]+\\.\\.[0-9]+)}")
+    _RANGE = re.compile("\\{([0-9]+\\.\\.[0-9]+)}")
 
     def __init__(self):
         self._cfg_file = None
@@ -82,18 +82,21 @@ class Config(object):
 
     @property
     def teams(self) -> list[str]:
-        value = str(self._get_param("teams"))
-        if match := Config._RANGE.search(value):
-            assert len(match.groups()) == 1, f"Invalid range '{value}'"
-            (start, end) = match.group(1).split("..")
-            fmt = value
-            values = []
-            try:
-                for i in range(int(start), int(end) + 1):
-                    values.append(Config._RANGE.sub(str(i), fmt))
-                return values
-            except ValueError:
-                assert False, f"Invalid range '{fmt}'"
+        values = [str(self._get_param("teams"))]
+        groups = Config._RANGE.findall(values[0])
+        if len(groups) == 0:
+            return values
+        for group in groups:
+            (start, end) = group.split("..")
+            new_values = []
+            for value in values:
+                try:
+                    for i in range(int(start), int(end) + 1):
+                        new_values.append(value.replace(f"{{{group}}}", str(i)))
+                except ValueError:
+                    assert False, f"Invalid range '{value}'"
+            values = new_values
+        return values
 
     def __getattr__(self, item) -> str | int:
         val = self._get_param(item)
