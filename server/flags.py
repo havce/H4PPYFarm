@@ -151,6 +151,8 @@ class FlagSubmitter(Thread):
             return entry
 
         entries = self._normalize_user_submitted_data(flags)
+        if len(entries) == 0:
+            return
         info(f"Submitted {len(entries)} valid flags from exploit '{exploit}'")
         entries = list(filter(lambda x: now - x["ts"] < FlagStore.FLAG_LIFETIME, map(ensure_ts, entries)))
         FlagStore.register_flags(entries, exploit)

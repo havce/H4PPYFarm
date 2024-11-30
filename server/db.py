@@ -3,6 +3,7 @@ from queue import Queue
 
 from config import cfg
 from threading import Thread, Lock, Condition
+from utils import error
 
 
 class SQLRequest(object):
@@ -50,15 +51,21 @@ class Database(Thread):
 
             assert isinstance(req, SQLRequest), "Not an SQL request"
 
-            if req.is_many():
-                res = self._cur.executemany(req.query, req.args)
-            else:
-                res = self._cur.execute(req.query, req.args)
-            res = res.fetchall()
-
-            if req.f:
-                res = map(lambda x: req.f(*x), res)
-            res = list(res)
+            try:
+                if req.is_many():
+                    res = self._cur.executemany(req.query, req.args)
+                else:
+                    res = self._cur.execute(req.query, req.args)
+                res = res.fetchall()
+                if req.f:
+                    res = map(lambda x: req.f(*x), res)
+                res = list(res)
+            except sqlite3.Error as exc:
+                error("Could not execute db request")
+                error(f"Request query: {req.query}")
+                error(f"Request args: {req.args}")
+                error(exc)
+                res = []
 
             self._results[req.id] = res
             with self._result_ready:
