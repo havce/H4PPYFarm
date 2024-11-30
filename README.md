@@ -20,7 +20,7 @@ The possible configuration options are:
 
 | **option**    | **provided by** | **default value** | **description                                                                                      |
 |---------------|-----------------|-------------------|----------------------------------------------------------------------------------------------------|
-| port          | env, farm.yml   | 8080              | the server port                                                                                    |
+| port          | env, farm.yml   | 6969              | the server port                                                                                    |
 | tick_duration | env, farm.yml   | 120               | the duration of a game tick, in seconds                                                            |
 | flag_lifetime | env, farm.yml   | 5                 | the time for which a flag is valid, expressed in game ticks                                        |
 | submit_period | env, farm.yml   | 10                | the period with which the server will try to send new flags to the game system                     |
