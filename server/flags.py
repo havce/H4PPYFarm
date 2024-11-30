@@ -257,7 +257,7 @@ class FlagSubmitterTcp(FlagSubmitter):
             sock = socket.create_connection(self._address, timeout=FlagSubmitter.TIMEOUT)
             submissions = []
             for flag in flags:
-                sock.send(flag.encode())
+                sock.send(flag.encode() + b"\n")
                 ready = select.select([sock], [], [], FlagSubmitter.TIMEOUT)
                 if ready[0]:
                     # we assume the server will not reply with more than 4096 bytes of data at a time
