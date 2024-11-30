@@ -114,7 +114,6 @@ function rebuild_selector_list(data) {
     // store the currently selected value
     const selected_index = checker_selector.selectedIndex;
     const selected_value = selected_index < 0 ? NaN : parseInt(checker_selector.children[selected_index].value);
-    //
     checker_selector.innerHTML = '<option value="" disabled hidden selected>Select a checker</option>';
     data.forEach(checker => {
         const name = get_checker_name(checker);
@@ -136,7 +135,7 @@ function rebuild_selector_list(data) {
 
 remove_checker_button.addEventListener("click", () => {
     const selected_index = checker_selector.selectedIndex;
-    if (selected_index < 0) {
+    if (selected_index <= 0) {
         return;
     }
     const selected_value = parseInt(checker_selector.children[selected_index].value);
