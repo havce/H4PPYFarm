@@ -321,7 +321,8 @@ def run_exploit(team: str) -> list[dict[str, str | float]] | None:
     global failure_counters, params, cfg
 
     failure_threshold = params["failure-threshold"]
-    if randint(0, failure_counters[team]) > failure_threshold:
+    # FIXME: Figure out why the fuck failure_counters[team] becomes a fucking float
+    if randint(0, int(failure_counters[team])) > failure_threshold:
         # decrease the possibility of running the exploit on teams on which the exploit seems to fail the most
         wprint(highlight(f"Not running exploit on {team} (too many failures)", YELLOW))
         return None

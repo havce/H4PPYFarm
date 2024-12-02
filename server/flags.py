@@ -248,10 +248,10 @@ class FlagSubmitterTcp(FlagSubmitter):
     @staticmethod
     def _normalize_system_response_data(response: str, flag: str) -> dict[str, str | bool]:
         message = response.strip()
-        if " " in message:
+        if flag in message:
             # ENOWARS game systems sends back the flag and a message
             flag, message = response.split(" ", 1)
-        status = message in "OK"
+        status = "OK" in message
         return {"flag": flag, "msg": message, "status": status}
 
     def do_submit(self, flags: list[str]) -> list[dict[str, str | bool]] | None:
