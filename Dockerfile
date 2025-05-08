@@ -1,6 +1,4 @@
-FROM python:3.11-alpine
-
-RUN pip3 install --no-cache-dir Flask PyYAML requests waitress
+FROM python:3.13-alpine
 
 RUN apk update && apk add rustup clang make pkgconf linux-headers
 RUN rustup-init -y
@@ -14,11 +12,14 @@ WORKDIR /server
 
 COPY ./docker-scripts /docker-scripts
 
-# build libmnl and libnftnl manually, because cargo does not like the ones provided by Alpine
+# Build libmnl and libnftnl manually, because cargo does not like the ones provided by Alpine.
 RUN /docker-scripts/build-libmnl.sh
 RUN /docker-scripts/build-libnftnl.sh
 
 COPY ./server /server
+# Install server dependencies.
+RUN cd /server && pip3 install --no-cache-dir -r 
+
 COPY ./client/start_sploit.py /server/static/files/
 COPY ./hfi /hfi-src
 
