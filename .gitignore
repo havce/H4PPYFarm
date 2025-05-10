@@ -3,5 +3,6 @@
 **/.env
 .venv/
 .idea/
+client/test_sploit.py
 server/static/files
 hfi/target

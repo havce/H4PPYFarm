@@ -1,89 +1,103 @@
 import secrets
 import re
 import yaml
+
+from typing import Any, cast
 from os import getenv
-from utils import info, warning, error
 
-defaults = {
-    "address": "0.0.0.0",
-    "port": 6969,
-    "flag_lifetime": 5,
-    "tick_duration": 120,
-    "submit_period": 10,
-    "batch_limit": 1000,
-    "database": ":memory:",
-    "flag_format": "[A-Z0-9]{31}=",
-    "timeout": 10,
-    "hfi_source": "../hfi",
-    "hfi_cache": "../hfi-cache"
-}
+from . import log
+
+type ConfigValue = int | str | bytes | bool
 
 
-class Config(object):
-    _RANGE = re.compile("\\{([0-9]+\\.\\.[0-9]+)}")
+class ConfigMeta(type):
+    _RANGE_REGEX = re.compile("\\{([0-9]+\\.\\.[0-9]+)}")
+    _DEFAULTS = {
+        "address": "0.0.0.0",
+        "port": 6969,
+        "flag_lifetime": 5,
+        "tick_duration": 120,
+        "submit_period": 10,
+        "batch_limit": 1000,
+        "database": ":memory:",
+        "flag_format": "[A-Z0-9]{31}=",
+        "timeout": 10,
+        "hfi_source": "../hfi",
+        "hfi_cache": "../hfi-cache",
+    }
 
-    def __init__(self):
-        self._cfg_file = None
-        try:
-            with open("farm.yml", "r") as f:
-                try:
-                    self._cfg_file = yaml.safe_load(f)
-                except yaml.YAMLError as exc:
-                    error(exc)
-        except FileNotFoundError:
-            warning("No farm.yml file found!")
+    _yaml_data = None
 
-    @staticmethod
-    def _get_env(key):
-        val = getenv("FARM_" + key.upper())
-        if not val or len(val) == 0:
+    @classmethod
+    def _get_yaml_data(cls) -> Any:
+        if cls._yaml_data is None:
+            try:
+                with open("farm.yml", "r") as f:
+                    cls._yaml_data = yaml.safe_load(f)
+            except (FileNotFoundError, yaml.YAMLError) as exc:
+                if isinstance(exc, FileNotFoundError):
+                    log.warning("No farm.yml file found!")
+                else:
+                    log.error("Could not parse farm.yaml")
+                    log.error(exc)
+                # Initialize the configuration with an empty dict
+                cls._yaml_data = dict()
+        return cls._yaml_data
+
+    @classmethod
+    def _get_env(cls, key: str) -> str | int | None:
+        key = "FARM_" + key.upper()
+        if not (val := getenv(key)) or len(val) == 0:
             return None
         try:
             # Try parsing the value as integer
-            val = int(val)
+            return int(val)
         except ValueError:
-            pass
-        return val
+            return val
 
-    def _get_cfg(self, key):
-        if self._cfg_file:
-            return self._cfg_file.get(key.replace("_", "-"))
+    @classmethod
+    def _get_yaml(cls, key: str) -> Any:
+        if data := cls._get_yaml_data():
+            return data.get(key.replace("_", "-"))
         return None
 
-    def _get_param(self, key) -> str | int:
-        for fn in [self._get_env, self._get_cfg]:
-            val = fn(key)
-            if val:
+    @classmethod
+    def _get_value(cls, key: str) -> str | int:
+        for fn in [cls._get_env, cls._get_yaml]:
+            if val := fn(key):
                 return val
-        val = defaults.get(key)
-        assert val, f"""
-            No default value exists for parameter '{key}'.
-            Please provide one using environment variables or a farm.yml file!
-        """
-        return val
-
-    @property
-    def secret_key(self) -> bytes:
-        key = self._get_env("secret_key")
-        if not key:
-            warning("No secret key provided. Generating a default one...")
-            key = secrets.token_bytes(32)
-            info("You can specify a secret key using the FARM_SECRET_KEY environment variable")
         else:
-            key = str(key).encode("ASCII")
-        return key
+            val = cls._DEFAULTS.get(key)
+            log.ensure(
+                val is not None,
+                f"No default value exists for parameter '{key}'. Please provide one using environment variables or a farm.yml file!",
+            )
+            # Shut up linter
+            assert val
+            return val
 
-    @property
-    def database(self) -> str:
-        val = str(self._get_param("database"))
-        if val == ":memory:":
-            warning("Using an in-memory database is discouraged!")
+    @classmethod
+    def _getter_secret_key(cls) -> bytes:
+        if not (key := cls._get_env("secret_key")):
+            log.warning("No secret key provided. Generating a default one...")
+            key = secrets.token_bytes(32)
+            log.info(
+                "You can specify a secret key using the FARM_SECRET_KEY environment variable"
+            )
+            return key
+        else:
+            return str(key).encode("ASCII")
+
+    @classmethod
+    def _getter_database(cls) -> str:
+        if (val := str(cls._get_value("database"))) == ":memory:":
+            log.warning("Using an in-memory database is discouraged!")
         return val
 
-    @property
-    def teams(self) -> list[str]:
-        values = [str(self._get_param("teams"))]
-        groups = Config._RANGE.findall(values[0])
+    @classmethod
+    def _getter_teams(cls) -> list[str]:
+        values = [str(cls._get_value("teams"))]
+        groups = cls._RANGE_REGEX.findall(values[0])
         if len(groups) == 0:
             return values
         for group in groups:
@@ -94,20 +108,39 @@ class Config(object):
                     for i in range(int(start), int(end) + 1):
                         new_values.append(value.replace(f"{{{group}}}", str(i)))
                 except ValueError:
-                    assert False, f"Invalid range '{value}'"
+                    log.fatal(f"Invalid range '{value}'")
             values = new_values
         return values
 
-    def __getattr__(self, item) -> str | int:
-        val = self._get_param(item)
-        match item:
+    @classmethod
+    def _getter_dev_mode(cls) -> bool:
+        return not (cls._get_env("dev") is None)
+
+    @classmethod
+    def _ensure_type(cls, key, val: ConfigValue) -> ConfigValue:
+        match key:
             case "password" | "team_token":
                 return str(val)
             case "timeout":
                 assert isinstance(val, int), "Timeout must be an integer"
             case "system_url":
-                assert isinstance(val, str) and "://" in val, "No protocol specified in system URL!"
+                log.ensure(
+                    isinstance(val, str) and "://" in val,
+                    "No protocol specified in system URL!",
+                )
         return val
 
+    @classmethod
+    def __getattr__(cls: type, key: str) -> ConfigValue:
+        getter_name = f"_getter_{key}"
+        if (getter := cls.__dict__.get(getter_name)) and isinstance(
+            getter, classmethod
+        ):
+            return cast(ConfigValue, getter.__func__(cls))
+        else:
+            return cls._ensure_type(key, cls._get_value(key))
 
-cfg = Config()
+
+# I fucking hate python
+class Config(metaclass=ConfigMeta):
+    pass
