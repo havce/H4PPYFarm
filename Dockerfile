@@ -16,9 +16,12 @@ COPY ./docker-scripts /docker-scripts
 RUN /docker-scripts/build-libmnl.sh
 RUN /docker-scripts/build-libnftnl.sh
 
-COPY ./server /server
-# Install server dependencies.
+# Install server dependencies first, so that we don't have to rebuild the entire
+# layer every time we change something in the server.
+COPY ./server/requirements.txt /server/requirements.txt
 RUN cd /server && pip3 install --no-cache-dir -r requirements.txt
+# Copy the rest of the server
+COPY ./server /server
 
 COPY ./client/start_sploit.py /server/static/files/
 COPY ./hfi /hfi-src

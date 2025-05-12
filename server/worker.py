@@ -86,17 +86,17 @@ class SubmitterForcAD(Submitter):
         except TypeError as e:
             log.error(f"Invalid system response. {e}")
         # Invalid response JSON
-        except requests.JSONDecodeError as e:
-            log.error(f"Could not decode system response. {e}")
+        except requests.JSONDecodeError:
+            log.error(f"Could not decode system response")
         # Connection errors
-        except TimeoutError as e:
-            log.error(f"Request to game system timed out. {e}")
-        except requests.ConnectionError as e:
-            log.error(f"Could not connect to game system. {e}")
-        except (requests.HTTPError, requests.TooManyRedirects) as e:
-            log.error(f"An HTTP error occurred. {e}")
-        except requests.RequestException as e:
-            log.error(f"An error occurred while building the request. {e}")
+        except requests.Timeout:
+            log.error(f"Request to game system timed out")
+        except requests.ConnectionError:
+            log.error(f"Could not connect to game system")
+        except (requests.HTTPError, requests.TooManyRedirects):
+            log.error(f"An HTTP error occurred")
+        except requests.RequestException:
+            log.error(f"An error occurred while building the request")
 
 
 _submitter = (
