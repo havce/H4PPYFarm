@@ -18,9 +18,9 @@ RUN /docker-scripts/build-libnftnl.sh
 
 COPY ./server /server
 # Install server dependencies.
-RUN cd /server && pip3 install --no-cache-dir -r 
+RUN cd /server && pip3 install --no-cache-dir -r requirements.txt
 
 COPY ./client/start_sploit.py /server/static/files/
 COPY ./hfi /hfi-src
 
-ENTRYPOINT ["python3", "app.py"]
+ENTRYPOINT ["python3", "main.py"]

@@ -18,7 +18,7 @@ this_arch = platform.machine()
 
 # global configuration
 params = {}  # client configuration
-cfg = {}     # server configuration
+cfg = {}  # server configuration
 
 # wave state
 wave = 1
@@ -39,6 +39,7 @@ WHITE = 7
 def set_proc_name(name: str):
     if this_os == "linux":
         from ctypes import cdll, byref, create_string_buffer
+
         name_bytes = name.encode("ASCII")
         libc = cdll.LoadLibrary("libc.so.6")
         buff = create_string_buffer(len(name_bytes) + 1)
@@ -73,7 +74,9 @@ The possible value for OPTIONS are:
     exit(-1)
 
 
-def get_arg(arg_name: str, default: str | int | None, is_switch: bool) -> str | bool | None:
+def get_arg(
+    arg_name: str, default: str | int | None, is_switch: bool
+) -> str | bool | None:
     try:
         idx = sys.argv.index(f"--{arg_name}")
         if is_switch:
@@ -98,7 +101,7 @@ def parse_args():
         "fake-timestamps": False,
         "always-retry": False,
         "max-failures": 12,
-        "failure-threshold": 4
+        "failure-threshold": 4,
     }
 
     for arg, default in config_keys.items():
@@ -129,12 +132,18 @@ def url_for(endpoint) -> str:
 def authenticate() -> Session:
     global params
 
-    print(f"Authenticating on {url_for('/api/auth')} with password ({'*' * len(params['server-pass'])})...")
+    print(
+        f"Authenticating on {url_for('/api/auth')} with password ({'*' * len(params['server-pass'])})..."
+    )
     try:
         session = Session()
-        res = session.post(url_for("/api/auth"), json={"password": params["server-pass"]})
+        res = session.post(
+            url_for("/api/auth"), json={"password": params["server-pass"]}
+        )
         if res.status_code != 200:
-            print(highlight("Authentication failed. Is the server password correct?", RED))
+            print(
+                highlight("Authentication failed. Is the server password correct?", RED)
+            )
             exit(-1)
         return session
     except ConnectionError:
@@ -148,8 +157,8 @@ def get_config(session: Session):
     try:
         res = session.get(url_for("/api/config"))
         remote_cfg = res.json()
-        for (key, val) in remote_cfg.items():
-            if key == "flag_format":
+        for key, val in remote_cfg.items():
+            if key == "flagFormat":
                 cfg[key] = re.compile(val, re.MULTILINE)
             else:
                 cfg[key] = val
@@ -169,11 +178,7 @@ def get_config(session: Session):
 def linux_set_capabilities(file: str, caps: list[str]) -> bool:
     if len(caps) == 0:
         return True
-    root_utils = {
-        "pkexec": ["--keep-cwd"],
-        "sudo": [],
-        "doas": []
-    }
+    root_utils = {"pkexec": ["--keep-cwd"], "sudo": [], "doas": []}
     for util in root_utils.keys():
         if util_path := shutil.which(util):
             util_args = [util_path, *root_utils[util]]
@@ -183,9 +188,15 @@ def linux_set_capabilities(file: str, caps: list[str]) -> bool:
 
     caps = ",".join(caps)
     try:
-        print(highlight(
-            f"We need your permission to set the following capabilities for the file '{file}': {caps}", GREEN))
-        run_process([*util_args, "setcap", caps + "+ep", file], check=True, capture_output=True)
+        print(
+            highlight(
+                f"We need your permission to set the following capabilities for the file '{file}': {caps}",
+                GREEN,
+            )
+        )
+        run_process(
+            [*util_args, "setcap", caps + "+ep", file], check=True, capture_output=True
+        )
         return True
     except CalledProcessError:
         return False
@@ -277,7 +288,10 @@ def launch_hfi(session: Session):
     global params
 
     if not (hfi_path := get_hfi(session)):
-        print(highlight("Cannot fake timestamps. Continue anyways? [y/N]", YELLOW), end=" > ")
+        print(
+            highlight("Cannot fake timestamps. Continue anyways? [y/N]", YELLOW),
+            end=" > ",
+        )
         if (input() or "n").lower() != "y":
             exit(-1)
         return
@@ -309,8 +323,10 @@ def check_exploit():
     try:
         with open(exploit, "r") as f:
             source = "\n".join(f.readlines())
-            if re.search(r'flush\s*=\s*True', source) is None:
-                print("Please use print(..., flush=True) in your script, instead of just print(...)")
+            if re.search(r"flush\s*=\s*True", source) is None:
+                print(
+                    "Please use print(..., flush=True) in your script, instead of just print(...)"
+                )
                 exit(-1)
     except FileNotFoundError as exc:
         print(f"Could not open {exploit}: {exc}")
@@ -326,7 +342,7 @@ def run_exploit(team: str) -> list[dict[str, str | float]] | None:
         # decrease the possibility of running the exploit on teams on which the exploit seems to fail the most
         wprint(highlight(f"Not running exploit on {team} (too many failures)", YELLOW))
         return None
-    flag_format = cfg["flag_format"]
+    flag_format = cfg["flagFormat"]
     exploit = params["exploit"]
     timeout = params["timeout"] if params["timeout"] > 1 else 1
     # FIXME: Do NOT run all exploits with python3 by default. Check whether the file is a binary
@@ -335,7 +351,9 @@ def run_exploit(team: str) -> list[dict[str, str | float]] | None:
     args = ["python3", exploit, team]
 
     try:
-        output = run_process(args, capture_output=True, timeout=timeout, check=True).stdout.decode()
+        output = run_process(
+            args, capture_output=True, timeout=timeout, check=True
+        ).stdout.decode()
         run_flags = flag_format.findall(output)
         if len(run_flags) == 0:
             wprint(highlight(f"Got no flags for team {team}", MAGENTA))
@@ -383,7 +401,9 @@ def compute_n_workers(n_workers: int, deadline: float, wave_time: float) -> int:
         n_workers = os.cpu_count()
     expected_time = (time_per_team * len(teams)) / n_workers
 
-    wprint(f"{teams_per_worker = }, {time_per_team = :.2f}s, {n_workers = }, {expected_time = :.2f}s")
+    wprint(
+        f"{teams_per_worker = }, {time_per_team = :.2f}s, {n_workers = }, {expected_time = :.2f}s"
+    )
 
     return n_workers
 
@@ -410,7 +430,9 @@ def send_flags(session: Session, flags: list[str]) -> bool:
     try:
         exploit = params["exploit"]
         exploit_name, _ = os.path.basename(exploit).split(".", 1)
-        res = session.post(url_for(f"/api/flags/{exploit_name}"), json=flags, timeout=10)
+        res = session.post(
+            url_for(f"/api/flags/{exploit_name}"), json=flags, timeout=10
+        )
         if res.status_code == 200:
             return True
         wprint(highlight("Could not send flags, am I not authenticated?", YELLOW))
@@ -432,7 +454,7 @@ def main():
         launch_hfi(session)
 
     n_workers = os.cpu_count()
-    deadline = cfg["tick_duration"] * 0.5
+    deadline = cfg["tickDuration"] * 0.5
 
     flags = []
     try:

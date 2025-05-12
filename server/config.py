@@ -1,11 +1,12 @@
 import secrets
 import re
 import yaml
+import log
 
 from typing import Any, cast
 from os import getenv
+from hashlib import sha256
 
-from . import log
 
 type ConfigValue = int | str | bytes | bool
 
@@ -18,10 +19,10 @@ class ConfigMeta(type):
         "flag_lifetime": 5,
         "tick_duration": 120,
         "submit_period": 10,
+        "submit_timeout": 10,
         "batch_limit": 1000,
         "database": ":memory:",
         "flag_format": "[A-Z0-9]{31}=",
-        "timeout": 10,
         "hfi_source": "../hfi",
         "hfi_cache": "../hfi-cache",
     }
@@ -63,18 +64,18 @@ class ConfigMeta(type):
 
     @classmethod
     def _get_value(cls, key: str) -> str | int:
-        for fn in [cls._get_env, cls._get_yaml]:
-            if val := fn(key):
-                return val
+        for function in [cls._get_env, cls._get_yaml]:
+            if value := function(key):
+                return value
         else:
-            val = cls._DEFAULTS.get(key)
+            value = cls._DEFAULTS.get(key)
             log.ensure(
-                val is not None,
+                value is not None,
                 f"No default value exists for parameter '{key}'. Please provide one using environment variables or a farm.yml file!",
             )
             # Shut up linter
-            assert val
-            return val
+            assert value
+            return value
 
     @classmethod
     def _getter_secret_key(cls) -> bytes:
@@ -90,9 +91,9 @@ class ConfigMeta(type):
 
     @classmethod
     def _getter_database(cls) -> str:
-        if (val := str(cls._get_value("database"))) == ":memory:":
+        if (value := str(cls._get_value("database"))) == ":memory:":
             log.warning("Using an in-memory database is discouraged!")
-        return val
+        return value
 
     @classmethod
     def _getter_teams(cls) -> list[str]:
@@ -114,26 +115,26 @@ class ConfigMeta(type):
 
     @classmethod
     def _getter_dev_mode(cls) -> bool:
-        return not (cls._get_env("dev") is None)
+        return cls._get_env("dev") is not None
 
     @classmethod
-    def _ensure_type(cls, key, val: ConfigValue) -> ConfigValue:
+    def _ensure_type(cls, key: str, value: ConfigValue) -> ConfigValue:
         match key:
             case "password" | "team_token":
-                return str(val)
+                return sha256(str(value).encode()).digest()
             case "timeout":
-                assert isinstance(val, int), "Timeout must be an integer"
+                log.ensure(isinstance(value, int), "Timeout must be an integer")
             case "system_url":
                 log.ensure(
-                    isinstance(val, str) and "://" in val,
+                    isinstance(value, str) and "://" in value,
                     "No protocol specified in system URL!",
                 )
-        return val
+        return value
 
     @classmethod
-    def __getattr__(cls: type, key: str) -> ConfigValue:
+    def __getattr__(cls, key: str) -> ConfigValue:
         getter_name = f"_getter_{key}"
-        if (getter := cls.__dict__.get(getter_name)) and isinstance(
+        if (getter := cast(type, cls).__dict__.get(getter_name)) and isinstance(
             getter, classmethod
         ):
             return cast(ConfigValue, getter.__func__(cls))
@@ -144,3 +145,9 @@ class ConfigMeta(type):
 # I fucking hate python
 class Config(metaclass=ConfigMeta):
     pass
+
+
+# Trigger checks for values that don't have defaults set
+_ = Config.password
+_ = Config.teams
+_ = Config.system_url
