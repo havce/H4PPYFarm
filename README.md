@@ -4,6 +4,7 @@
 
 - PyYAML
 - Flask
+- Flask-SQLAlchemy
 - requests
 - waitress
 
@@ -31,7 +32,7 @@ The possible configuration options are:
 | secret_key     | env             | random            | the secret key used by Flask to encrypt sessions                                                   |
 | team_token     | env, farm.yml   | -                 | the team token to use when posting flags to the game system (only used for the HTTP protocol)      |
 | system_url     | env, farm.yml   | -                 | the URL to which the server should try and send the flags to (it must specify a protocol with ://) |
-| system_type    | env, farm.yml   | -                 | the type of the game system (for now only ForcAD type is implemented)                              |
+| system_type    | env, farm.yml   | forcad            | the type of the game system (for now only `ForcAD` type is implemented)                            |
 | teams          | env, farm.yml   | -                 | the addresses of every team in the game, expressed as a range                                      |
 | password       | env, farm.yml   | -                 | the password needed to access the server                                                           |
 | hfi_source     | env, farm.yml   | ./hfi             | the path to the source root of the hfi executable                                                  |

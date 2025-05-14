@@ -4,6 +4,7 @@ from typing import Any
 from config import Config
 from database import db, Flags
 from timeutils import time, time_to_date
+from sqlalchemy.exc import IntegrityError
 
 
 _BATCH_LIMIT = int(Config.batch_limit)
@@ -52,10 +53,17 @@ def submit(exploit: str, user_data: Any) -> int:
     submitted_flags = list(
         filter(lambda x: x is not None, map(normalize_user_data, user_data)),
     )
-    log.info(f"Submitted {len(submitted_flags)} for exploit {exploit}")
 
-    db.session.add_all(submitted_flags)
+    queued_flags = 0
+    for flag in submitted_flags:
+        try:
+            db.session.add(flag)
+            queued_flags += 1
+        except IntegrityError:
+            pass
     db.session.commit()
+
+    log.info(f"Submitted {queued_flags} for exploit {exploit}")
 
     return len(submitted_flags)
 

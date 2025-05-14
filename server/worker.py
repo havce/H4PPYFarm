@@ -1,4 +1,3 @@
-from json import JSONDecodeError
 import log
 import flags
 import requests
