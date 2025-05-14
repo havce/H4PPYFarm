@@ -45,7 +45,7 @@ class SubmitterForcAD(Submitter):
         "DENIED": flags.STATUS_REJECTED,
         "RESUBMIT": flags.STATUS_REJECTED,
         "ERROR": flags.STATUS_REJECTED,
-        "UNKNOWN": flags.STATUS_REJECTED,
+        "UNKNOWN": flags.STATUS_UNKNOWN,
     }
 
     def __init__(self) -> None:
@@ -58,7 +58,7 @@ class SubmitterForcAD(Submitter):
         if (flag := obj.get("flag")) and (flags_entry := flags_map.get(flag)):
             status = obj.get("status", "UNKNOWN")
             status = self._STATUS_MAP.get(status, flags.STATUS_UNKNOWN)
-            message = obj.get("message", "Unknown message")
+            message = obj.get("msg", "Unknown message")
             message = message.split("] ", 1)[-1]
             flags_entry.submit_result(status, message)
 

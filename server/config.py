@@ -22,6 +22,7 @@ class ConfigMeta(type):
         "submit_timeout": 10,
         "batch_limit": 1000,
         "database": ":memory:",
+        "system_type": "forcad",
         "flag_format": "[A-Z0-9]{31}=",
         "hfi_source": "../hfi",
         "hfi_cache": "../hfi-cache",
@@ -120,8 +121,10 @@ class ConfigMeta(type):
     @classmethod
     def _ensure_type(cls, key: str, value: ConfigValue) -> ConfigValue:
         match key:
-            case "password" | "team_token":
+            case "password":
                 return sha256(str(value).encode()).digest()
+            case "team_token":
+                return str(value)
             case "timeout":
                 log.ensure(isinstance(value, int), "Timeout must be an integer")
             case "system_url":
