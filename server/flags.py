@@ -58,12 +58,14 @@ def submit(exploit: str, user_data: Any) -> int:
     for flag in submitted_flags:
         try:
             db.session.add(flag)
+            db.session.commit()
             queued_flags += 1
         except IntegrityError:
-            pass
-    db.session.commit()
-
+            db.session.rollback()
+            db.session.expunge(flag)
     log.info(f"Submitted {queued_flags} for exploit {exploit}")
+
+    # db.session.execute(db.insert())
 
     return len(submitted_flags)
 
