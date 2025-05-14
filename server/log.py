@@ -10,7 +10,7 @@ _COLOR_ERROR = "\033[1;31m"
 _COLOR_FATAL = "\033[1;41;97m"
 
 
-def _p(*args, **kwargs):
+def _p(*args, **kwargs) -> None:
     print(f"{date()} |", *args, "\033[0m", **kwargs, flush=True, file=sys.stderr)
 
 

@@ -4,7 +4,7 @@ from typing import Any
 from config import Config
 from database import db, Flags
 from timeutils import time, time_to_date
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.dialects import sqlite
 
 
 _BATCH_LIMIT = int(Config.batch_limit)
@@ -16,6 +16,9 @@ STATUS_EXPIRED = 1
 STATUS_UNKNOWN = 2
 STATUS_ACCEPTED = 3
 STATUS_REJECTED = 4
+
+type Submission = dict[str, str | int]
+type SubmissionJson = dict[str, str | int | None]
 
 
 def mark_expired() -> None:
@@ -34,19 +37,22 @@ def mark_expired() -> None:
     db.session.commit()
 
 
-def submit(exploit: str, user_data: Any) -> int:
-    def normalize_user_data(data: Any) -> Flags | None:
+def queue(exploit: str, user_data: Any) -> None:
+    def normalize_user_data(data: Any) -> Submission | None:
         if isinstance(data, str):
-            return Flags(
-                exploit=exploit, flag=data, timestamp=time(), status=STATUS_PENDING
-            )
+            return {
+                "exploit": exploit,
+                "flag": data,
+                "timestamp": time(),
+                "status": STATUS_PENDING,
+            }
         elif isinstance(data, dict) and isinstance(data.get("flag"), str):
-            return Flags(
-                exploit=exploit,
-                flag=data["flag"],
-                timestamp=data.get("ts", time()),
-                status=STATUS_PENDING,
-            )
+            return {
+                "exploit": exploit,
+                "flag": data["flag"],
+                "timestamp": data.get("ts", time()),
+                "status": STATUS_PENDING,
+            }
         else:
             return None
 
@@ -54,24 +60,20 @@ def submit(exploit: str, user_data: Any) -> int:
         filter(lambda x: x is not None, map(normalize_user_data, user_data)),
     )
 
-    queued_flags = 0
-    for flag in submitted_flags:
-        try:
-            db.session.add(flag)
-            db.session.commit()
-            queued_flags += 1
-        except IntegrityError:
-            db.session.rollback()
-            db.session.expunge(flag)
-    log.info(f"Submitted {queued_flags} for exploit {exploit}")
+    if len(submitted_flags) == 0:
+        return
 
-    # db.session.execute(db.insert())
-
-    return len(submitted_flags)
+    log.info(f"Submitted {len(submitted_flags)} for exploit {exploit}")
+    db.session.execute(
+        sqlite.insert(Flags)
+        .values(submitted_flags)
+        .on_conflict_do_nothing(index_elements=["flag"])
+    )
+    db.session.commit()
 
 
-def query(offset: int, count: int):
-    def convert_objects_to_json(flag: Flags) -> dict:
+def query(offset: int, count: int) -> list[SubmissionJson]:
+    def convert_objects_to_json(flag: Flags) -> SubmissionJson:
         submission_timestamp = (
             flag.submission_timestamp
             if flag.submission_timestamp is not None and flag.submission_timestamp > 0

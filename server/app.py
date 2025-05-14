@@ -78,7 +78,7 @@ def api_auth() -> Response:
 def api_put_flags(exploit: str) -> Response:
     if not request.is_json or not isinstance(request.json, list):
         abort(400)
-    flags.submit(exploit, request.json)
+    flags.queue(exploit, request.json)
     return success()
 
 
