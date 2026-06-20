@@ -11,7 +11,7 @@ from time import time, sleep
 from requests import Session, ConnectionError
 from json import JSONDecodeError
 from subprocess import run as run_process, Popen, CalledProcessError, TimeoutExpired
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, interpreter
 
 this_os = platform.system().lower()
 this_arch = platform.machine()
@@ -35,6 +35,8 @@ MAGENTA = 5
 CYAN = 6
 WHITE = 7
 
+INTERPRETERS = {".py": "python3", ".js": "node"}
+
 
 def set_proc_name(name: str):
     if this_os == "linux":
@@ -55,6 +57,19 @@ def wprint(*args):
 
 def highlight(message: str, color: int):
     return f"\033[3{color}m{message}\033[0m"
+
+
+def warn(text: str):
+    wprint(highlight("[WARN] " + text, YELLOW))
+
+
+def err(text: str):
+    wprint(highlight("[ERRO] " + text, RED))
+
+
+def fatal(text: str):
+    wprint(highlight("[CRIT] " + text, RED))
+    exit(-1)
 
 
 def usage():
@@ -141,14 +156,10 @@ def authenticate() -> Session:
             url_for("/api/auth"), json={"password": params["server-pass"]}
         )
         if res.status_code != 200:
-            print(
-                highlight("Authentication failed. Is the server password correct?", RED)
-            )
-            exit(-1)
+            fatal("Authentication failed. Is the server password correct?")
         return session
     except ConnectionError:
-        print(highlight(f"Could not communicate with the H4PPY Farm server.", RED))
-        exit(-1)
+        fatal("Cloud not communicate with the H4PPY Farm server.")
 
 
 def get_config(session: Session):
@@ -163,13 +174,12 @@ def get_config(session: Session):
             else:
                 cfg[key] = val
     except ConnectionError:
-        print("Could not retrieve configuration, continuing anyways...")
+        err("Could not retrieve configuration, continuing anyways...")
     except JSONDecodeError:
-        print("Could not decode configuration JSON, continuing anyways...")
+        err("Could not decode configuration JSON, continuing anyways...")
 
     if not ("teams" in cfg):
-        print("No configuration loaded!")
-        exit(-1)
+        fatal("No configuration loaded!")
     else:
         for team in filter(lambda x: not (x in failure_counters), cfg["teams"]):
             failure_counters[team] = 0
@@ -188,11 +198,8 @@ def linux_set_capabilities(file: str, caps: list[str]) -> bool:
 
     caps = ",".join(caps)
     try:
-        print(
-            highlight(
-                f"We need your permission to set the following capabilities for the file '{file}': {caps}",
-                GREEN,
-            )
+        warn(
+            f"We need your permission to set the following capabilities for the file '{file}': {caps}"
         )
         run_process(
             [*util_args, "setcap", caps + "+ep", file], check=True, capture_output=True
@@ -240,12 +247,12 @@ def get_hfi(session: Session) -> str | None:
         server_timestamp = None
         res = session.get(url_for(f"/hfi/timestamp"))
         if res.status_code != 200:
-            print(highlight(f"Cannot get hfi timestamp (error {res.status_code})", RED))
+            err(f"Cannot get hfi timestamp (error {res.status_code})")
         else:
             try:
                 server_timestamp = res.json().get("timestamp")
             except JSONDecodeError:
-                print(highlight("Invalid hfi timestamp", YELLOW))
+                warn("Invalid hfi timestamp")
 
         print(server_timestamp, local_timestamp)
         if server_timestamp and server_timestamp > local_timestamp:
@@ -255,14 +262,14 @@ def get_hfi(session: Session) -> str | None:
         elif os.access(exe_path, os.X_OK):
             return exe_path
     except FileNotFoundError:
-        print(highlight("Local version of hfi not found!", YELLOW))
+        err("Local version of hfi not found!")
 
     print(highlight("Downloading hfi from server...", YELLOW))
 
     # download hfi
     res = session.get(hfi_url)
     if res.status_code != 200:
-        print(highlight("Could not get hfi executable from server", RED))
+        err("Could not get hfi executable from server")
         return None
 
     # save the file
@@ -275,12 +282,12 @@ def get_hfi(session: Session) -> str | None:
                 if linux_set_capabilities(exe_path, ["cap_net_admin"]):
                     return exe_path
                 else:
-                    print(highlight("Could not set capabilities", RED))
+                    err("Could not set capabilities")
         else:
-            print(highlight("Could not make file executable", RED))
+            err("Could not make file executable")
     except FileNotFoundError | OSError:
-        print(highlight(f"Could not write executable to {exe_path}!", RED))
-        print(highlight("Does the current user have access to it?", YELLOW))
+        err(f"Could not write executable to {exe_path}!")
+        warn("Does the current user have access to it?")
     return None
 
 
@@ -320,17 +327,18 @@ def check_exploit():
 
     exploit = params["exploit"]
     print(f"Checking exploit '{exploit}'...")
-    try:
-        with open(exploit, "r") as f:
-            source = "\n".join(f.readlines())
-            if re.search(r"flush\s*=\s*True", source) is None:
-                print(
-                    "Please use print(..., flush=True) in your script, instead of just print(...)"
-                )
-                exit(-1)
-    except FileNotFoundError as exc:
-        print(f"Could not open {exploit}: {exc}")
-        exit(-1)
+
+    _, ext = os.path.splitext(exploit)
+    if ext == ".py":
+        try:
+            with open(exploit, "r") as f:
+                source = "\n".join(f.readlines())
+                if re.search(r"flush\s*=\s*True", source) is None:
+                    fatal(
+                        "Please use print(..., flush=True) in your script, instead of just print(...)"
+                    )
+        except FileNotFoundError as exc:
+            fatal(f"Could not open {exploit}: {exc}")
 
 
 def run_exploit(team: str) -> list[dict[str, str | float]] | None:
@@ -340,17 +348,19 @@ def run_exploit(team: str) -> list[dict[str, str | float]] | None:
     # FIXME: Figure out why the fuck failure_counters[team] becomes a fucking float
     if randint(0, int(failure_counters[team])) > failure_threshold:
         # decrease the possibility of running the exploit on teams on which the exploit seems to fail the most
-        wprint(highlight(f"Not running exploit on {team} (too many failures)", YELLOW))
+        warn(f"Not running exploit on {team} (too many failures)")
         return None
     flag_format = cfg["flagFormat"]
     exploit = params["exploit"]
     timeout = params["timeout"] if params["timeout"] > 1 else 1
-    # FIXME: Do NOT run all exploits with python3 by default. Check whether the file is a binary
-    #        or a script and either use the correct interpreter or refuse to run the file and
-    #        exit with an error.
-    args = ["python3", exploit, team]
 
     try:
+        _, ext = os.path.splitext(exploit)
+        if ext not in INTERPRETERS.keys():
+            fatal("Not a valid extension, pls use '.py' or '.js'")
+
+        args = [INTERPRETERS[ext], exploit, team]
+
         output = run_process(
             args, capture_output=True, timeout=timeout, check=True
         ).stdout.decode()
@@ -366,9 +376,9 @@ def run_exploit(team: str) -> list[dict[str, str | float]] | None:
             ts = time()
             return list(map(lambda x: {"flag": x, "ts": ts}, run_flags))
     except CalledProcessError:
-        wprint(highlight(f"Exploit crashed on team {team}!", RED))
+        err(f"Exploit crashed on team {team}!")
     except TimeoutExpired:
-        wprint(highlight(f"Exploit timed-out on team {team}!", YELLOW))
+        warn(f"Exploit timed-out on team {team}!")
     if failure_counters[team] < params["max-failures"]:
         failure_counters[team] += 1
     return None
@@ -379,10 +389,10 @@ def get_attack_data():
 
     attack_data_url = params["attack_data_url"]
     if not attack_data_url:
-        wprint(highlight(f"No attack data url provided", YELLOW))
+        warn(f"No attack data url provided")
         return None
     if not (attack_data_url.startswith("http") and "://" in attack_data_url):
-        wprint(highlight(f"Attack data url not supported! {attack_data_url}", RED))
+        err(f"Attack data url not supported! {attack_data_url}")
         return None
 
     # TODO finish implementing this
@@ -435,9 +445,9 @@ def send_flags(session: Session, flags: list[str]) -> bool:
         )
         if res.status_code == 200:
             return True
-        wprint(highlight("Could not send flags, am I not authenticated?", YELLOW))
+        warn("Could not send flags, am I not authenticated?")
     except ConnectionError:
-        wprint(highlight("Could not send flags, I will send them later.", YELLOW))
+        warn("Could not send flags, I will send them later.")
     return False
 
 
@@ -468,7 +478,7 @@ def main():
             wprint(f"Run finished, got {len(wave_flags)} flags")
             wprint(f"Exploit failed on {fails} teams")
             if len(wave_flags) == 0:
-                wprint(highlight(f"Got 0 flags, something's broken!", YELLOW))
+                warn(f"Got 0 flags, something's broken!")
             # send flags
             flags.extend(wave_flags)
             if send_flags(session, flags):
@@ -483,11 +493,11 @@ def main():
                 wprint(f"Sleeping for {wait_time:.2f}s")
                 sleep(wait_time)
             else:
-                wprint(highlight("Your exploit is very slow! Speed it up!", YELLOW))
+                warn("Your exploit is very slow! Speed it up!")
             get_config(session)  # refresh config
             wave += 1
     except KeyboardInterrupt:
-        print("Ctrl+C detected, exiting...")
+        err("Ctrl+C detected, exiting...")
 
 
 if __name__ == "__main__":
