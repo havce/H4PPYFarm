@@ -5,16 +5,16 @@ services:
     ports:
       - 6969:6969
     environment:
-      - FARM_TICK_DURATION=120
-      - FARM_FLAG_LIFETIME=120
-      - FARM_SUBMIT_PERIOD=5
-      - FARM_BATCH_LIMIT=100
-      - FARM_FLAG_FORMAT=[a-zA-Z]
-      - FARM_TEAM_TOKEN="teamtoken"
+      - FARM_TICK_DURATION=${TICK_DURATION}
+      - FARM_FLAG_LIFETIME=${FLAG_LIFETIME}
+      - FARM_SUBMIT_PERIOD=${SUBMIT_PERIOD}
+      - FARM_BATCH_LIMIT=${BATCH_LIMIT}
+      - FARM_FLAG_FORMAT=${FLAG_FORMAT}
+      - FARM_TEAM_TOKEN=${TEAM_TOKEN}
       - FARM_SYSTEM_URL=${SYSTEM_URL}
       - FARM_SYSTEM_TYPE=${SYSTEM_TYPE}
-      - FARM_TEAMS=10
-      - FARM_PASSWORD=testtesttest
+      - FARM_TEAMS=${TEAMS}
+      - FARM_PASSWORD=${PASSWORD}
       - FARM_SECRET_KEY=${SECRET_KEY}
       - FARM_DEBUG=${DEBUG}
       - FARM_DATABASE=/happy-db/flags.db

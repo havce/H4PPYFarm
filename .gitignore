@@ -6,3 +6,4 @@
 client/test_sploit.py
 server/static/files
 hfi/target
+docker-compose.yml

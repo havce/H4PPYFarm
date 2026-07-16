@@ -11,7 +11,7 @@ from time import time, sleep
 from requests import Session, ConnectionError
 from json import JSONDecodeError
 from subprocess import run as run_process, Popen, CalledProcessError, TimeoutExpired
-from concurrent.futures import ThreadPoolExecutor, interpreter
+from concurrent.futures import ThreadPoolExecutor
 
 this_os = platform.system().lower()
 this_arch = platform.machine()
@@ -35,7 +35,7 @@ MAGENTA = 5
 CYAN = 6
 WHITE = 7
 
-INTERPRETERS = {".py": "python3", ".js": "node"}
+INTERPRETERS = {".py": sys.executable, ".js": "node"}
 
 
 def set_proc_name(name: str):
@@ -155,6 +155,7 @@ def authenticate() -> Session:
         res = session.post(
             url_for("/api/auth"), json={"password": params["server-pass"]}
         )
+
         if res.status_code != 200:
             fatal("Authentication failed. Is the server password correct?")
         return session
@@ -171,6 +172,8 @@ def get_config(session: Session):
         for key, val in remote_cfg.items():
             if key == "flagFormat":
                 cfg[key] = re.compile(val, re.MULTILINE)
+            elif key == "teams":
+                cfg[key] = [f"10.0.{i}.1" for i in range(1, val + 1)]
             else:
                 cfg[key] = val
     except ConnectionError:
@@ -181,7 +184,7 @@ def get_config(session: Session):
     if not ("teams" in cfg):
         fatal("No configuration loaded!")
     else:
-        for team in filter(lambda x: not (x in failure_counters), cfg["teams"]):
+        for team in cfg["teams"]:
             failure_counters[team] = 0
 
 
@@ -404,18 +407,18 @@ def compute_n_workers(n_workers: int, deadline: float, wave_time: float) -> int:
     teams = cfg["teams"]
 
     wave_time = math.ceil(wave_time)
-    teams_per_worker = math.ceil(len(teams) / n_workers)
+    teams_per_worker = max(1, math.ceil(len(teams) / n_workers))
     time_per_team = wave_time / teams_per_worker
     n_workers = math.ceil((time_per_team * len(teams)) / deadline)
     if n_workers > os.cpu_count():
         n_workers = os.cpu_count()
-    expected_time = (time_per_team * len(teams)) / n_workers
+    expected_time = (time_per_team * len(teams)) / max(1, n_workers)
 
     wprint(
         f"{teams_per_worker = }, {time_per_team = :.2f}s, {n_workers = }, {expected_time = :.2f}s"
     )
 
-    return n_workers
+    return max(1, n_workers)
 
 
 def run_exploit_on_teams(n_workers: int) -> (float, list[dict[str, str | float]]):
