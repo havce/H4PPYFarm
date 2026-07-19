@@ -9,7 +9,7 @@ services:
       - FARM_FLAG_LIFETIME=120
       - FARM_SUBMIT_PERIOD=5
       - FARM_BATCH_LIMIT=100
-      - FARM_FLAG_FORMAT=[a-zA-Z]
+      - FARM_FLAG_FORMAT=[a-zA-Z]{4}
       - FARM_TEAM_TOKEN="teamtoken"
       - FARM_SYSTEM_URL=${SYSTEM_URL}
       - FARM_SYSTEM_TYPE=${SYSTEM_TYPE}

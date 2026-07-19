@@ -136,6 +136,41 @@ func (s *FlagService) GetPending(ctx context.Context) ([]Flag, error) {
 	return out, rows.Err()
 }
 
+func (s *FlagService) GetTotPending(ctx context.Context, offset int, count int) ([]Flag, error) {
+	rows, err := s.db.db.QueryContext(
+		ctx,
+		`SELECT flag, exploit, status, timestamp,
+		        submission_timestamp, system_message
+		  FROM flags
+		  LIMIT ?
+		  OFFSET ?`,
+		count,
+		offset,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []Flag
+	for rows.Next() {
+		var f Flag
+		if err := rows.Scan(
+			&f.Flag,
+			&f.Exploit,
+			&f.Status,
+			&f.Timestamp,
+			&f.SubmissionTimestamp,
+			&f.SystemMessage,
+		); err != nil {
+			return nil, err
+		}
+		out = append(out, f)
+	}
+
+	return out, rows.Err()
+}
+
 func (s *FlagService) UpdateResult(ctx context.Context, f *Flag) error {
 	_, err := s.db.db.ExecContext(
 		ctx,

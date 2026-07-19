@@ -18,6 +18,7 @@ type Config struct {
 	Address       string
 	Port          int
 	Password      string
+	Teams         int
 	FlagLifetime  int
 	TickDuration  int
 	SubmitPeriod  int
@@ -36,6 +37,7 @@ var defaults = Config{
 	Address:       "0.0.0.0",
 	Port:          6969,
 	Password:      "testtesttest",
+	Teams:         10,
 	FlagLifetime:  5,
 	TickDuration:  120,
 	SubmitPeriod:  10,
@@ -55,6 +57,7 @@ func New() Config {
 	cfg.Address = getStringConfigValue("ADDRESS", defaults.Address)
 	cfg.Port = getIntConfigValue("PORT", defaults.Port)
 	cfg.Password = getStringConfigValue("PASSWORD", defaults.Password)
+	cfg.Teams = getIntConfigValue("TEAMS", defaults.Teams)
 	cfg.FlagLifetime = getIntConfigValue("FLAG_LIFETIME", defaults.FlagLifetime)
 	cfg.TickDuration = getIntConfigValue("TICK_DURATION", defaults.TickDuration)
 	cfg.SubmitPeriod = getIntConfigValue("SUBMIT_PERIOD", defaults.SubmitPeriod)
