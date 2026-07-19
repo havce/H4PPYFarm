@@ -34,15 +34,16 @@ function buildTableRows(data) {
     const statuses = ["🕑", "⌛", "❔", "✅", "⛔"];
     let html = "<tbody>";
     data.forEach(obj => {
-        const exploit = DOMPurify.sanitize(obj.exploit);
-        const flag = DOMPurify.sanitize(obj.flag);
-        const timestamp = new Date(obj.timestamp * 1000).toISOString();
+        const exploit = DOMPurify.sanitize(obj.Exploit);
+        const flag = DOMPurify.sanitize(obj.Flag);
+        const timestamp = new Date(obj.Timestamp * 1000).toISOString();
         const submissionTimestamp =
-            obj.submissionTimestamp ?
-            new Date(obj.submissionTimestamp * 1000).toISOString() : "-";
-        const lifetime = Math.round(obj.lifetime);
-        const systemMessage = obj.systemMessage ? DOMPurify.sanitize(obj.systemMessage) : "-";
-        const status = obj.status != null && obj.status < statuses.length ? statuses[obj.status] : statuses[2];
+            obj.SubmissionTimestamp ?
+            new Date(obj.SubmissionTimestamp * 1000).toISOString() : "-";
+        const lifetimeEnd = obj.SubmissionTimestamp ? obj.SubmissionTimestamp : Date.now() / 1000;
+        const lifetime = Math.max(0, Math.round(lifetimeEnd - obj.Timestamp));
+        const systemMessage = obj.SystemMessage ? DOMPurify.sanitize(obj.SystemMessage) : "-";
+        const status = obj.Status != null && obj.Status < statuses.length ? statuses[obj.Status] : statuses[2];
         entry  = `<td>${status}</td>`;
         entry += `<td>${exploit}</td>`;
         entry += `<td>${flag}</td>`;

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/havce/H4ppyFarm/log"
@@ -13,8 +14,17 @@ import (
 
 type SubmitterResponse struct {
 	Flag    string `json:"flag"`
-	Status  int    `json:"status"`
+	Status  string `json:"status"`
 	Message string `json:"msg"`
+}
+
+// stripMessage removes the "[<flag>] " prefix that ForcAD prepends to
+// its response messages, keeping everything after the first "] ".
+func stripMessage(msg string) string {
+	if _, after, found := strings.Cut(msg, "] "); found {
+		return after
+	}
+	return msg
 }
 
 func ParseResponse(ctx context.Context, flagsMap map[string]sqlite.Flag, obj SubmitterResponse) {
@@ -24,9 +34,11 @@ func ParseResponse(ctx context.Context, flagsMap map[string]sqlite.Flag, obj Sub
 		return
 	}
 
+	message := stripMessage(obj.Message)
+
 	flag.Flag = obj.Flag
-	flag.Status = obj.Status
-	flag.SystemMessage = &obj.Message
+	flag.Status = sqlite.StatusFromString(obj.Status)
+	flag.SystemMessage = &message
 	now := time.Now().Unix()
 	flag.SubmissionTimestamp = &now
 
@@ -52,7 +64,7 @@ func doSend(ctx context.Context, batch []sqlite.Flag) error {
 	if err != nil {
 		return err
 	}
-	req.Header.Set("X-Team-Token", cfg.SecretKey)
+	req.Header.Set("X-Team-Token", cfg.TeamToken)
 
 	client := &http.Client{Timeout: time.Duration(cfg.SubmitTimeout) * time.Second}
 	resp, err := client.Do(req)

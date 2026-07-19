@@ -1,12 +1,14 @@
 package config
 
 import (
+	"crypto/rand"
 	"encoding/hex"
-	"math/rand"
 	"os"
 	"strconv"
 	"strings"
-	"time"
+
+	"github.com/havce/H4ppyFarm/log"
+	"golang.org/x/crypto/bcrypt"
 )
 
 type ConfigValue struct {
@@ -19,6 +21,7 @@ type Config struct {
 	Port          int
 	Password      string
 	Teams         int
+	TeamToken     string
 	FlagLifetime  int
 	TickDuration  int
 	SubmitPeriod  int
@@ -36,8 +39,9 @@ type Config struct {
 var defaults = Config{
 	Address:       "0.0.0.0",
 	Port:          6969,
-	Password:      "testtesttest",
+	Password:      "",
 	Teams:         10,
+	TeamToken:     "",
 	FlagLifetime:  5,
 	TickDuration:  120,
 	SubmitPeriod:  10,
@@ -56,8 +60,17 @@ func New() Config {
 
 	cfg.Address = getStringConfigValue("ADDRESS", defaults.Address)
 	cfg.Port = getIntConfigValue("PORT", defaults.Port)
-	cfg.Password = getStringConfigValue("PASSWORD", defaults.Password)
+
+	pass := getStringConfigValue("PASSWORD", defaults.Password)
+	log.Ensure(pass != "", "Inserisci una password.")
+	serverPassword, err := bcrypt.GenerateFromPassword([]byte(pass), bcrypt.DefaultCost)
+	if err != nil {
+		log.Error("Password inserita non valida")
+	}
+	cfg.Password = string(serverPassword)
+
 	cfg.Teams = getIntConfigValue("TEAMS", defaults.Teams)
+	cfg.TeamToken = getStringConfigValue("TEAM_TOKEN", defaults.TeamToken)
 	cfg.FlagLifetime = getIntConfigValue("FLAG_LIFETIME", defaults.FlagLifetime)
 	cfg.TickDuration = getIntConfigValue("TICK_DURATION", defaults.TickDuration)
 	cfg.SubmitPeriod = getIntConfigValue("SUBMIT_PERIOD", defaults.SubmitPeriod)
@@ -101,11 +114,10 @@ func getIntConfigValue(key string, def int) int {
 	return val
 }
 
-// https://stackoverflow.com/questions/46904588/efficient-way-to-to-generate-a-random-hex-string-of-a-fixed-length-in-golang
 func RandomHex(n int) string {
 	b := make([]byte, (n+1)/2)
 
-	if _, err := rand.New(rand.NewSource(time.Now().UnixNano())).Read(b); err != nil {
+	if _, err := rand.Read(b); err != nil {
 		panic(err)
 	}
 

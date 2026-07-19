@@ -5,5 +5,7 @@ import (
 	"io/fs"
 )
 
+//go:embed css js
 var fsys embed.FS
+
 var FS fs.FS = fsys

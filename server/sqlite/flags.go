@@ -61,7 +61,8 @@ func (s *FlagService) Create(ctx context.Context, f *Flag) error {
 		ctx,
 		`INSERT INTO flags
 		 (flag, exploit, status, timestamp, submission_timestamp, system_message)
-		 VALUES (?, ?, ?, ?, ?, ?)`,
+		 VALUES (?, ?, ?, ?, ?, ?)
+		 ON CONFLICT(flag) DO NOTHING`,
 		f.Flag,
 		f.Exploit,
 		f.Status,
@@ -136,12 +137,13 @@ func (s *FlagService) GetPending(ctx context.Context) ([]Flag, error) {
 	return out, rows.Err()
 }
 
-func (s *FlagService) GetTotPending(ctx context.Context, offset int, count int) ([]Flag, error) {
+func (s *FlagService) GetFlags(ctx context.Context, offset int, count int) ([]Flag, error) {
 	rows, err := s.db.db.QueryContext(
 		ctx,
 		`SELECT flag, exploit, status, timestamp,
 		        submission_timestamp, system_message
 		  FROM flags
+		  ORDER BY timestamp DESC
 		  LIMIT ?
 		  OFFSET ?`,
 		count,

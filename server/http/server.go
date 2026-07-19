@@ -11,11 +11,14 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/havce/H4ppyFarm/config"
 	"github.com/havce/H4ppyFarm/http/assets"
+	"github.com/havce/H4ppyFarm/http/html"
 	"github.com/havce/H4ppyFarm/log"
 	"github.com/havce/H4ppyFarm/sqlite"
+	"golang.org/x/crypto/bcrypt"
 )
 
 const ShutDownTimeout = time.Second * 5
+const ScriptPath = "./client/start_sploit.py"
 
 type Server struct {
 	ln     net.Listener
@@ -57,11 +60,25 @@ func (s *Server) handleApiAuth(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	if body.Password != s.Config.Password {
+	err = bcrypt.CompareHashAndPassword(
+		[]byte(body.Password),
+		[]byte(s.Config.Password),
+	)
+	if err != nil {
 		w.WriteHeader(http.StatusUnauthorized)
+		log.Error("invalid password")
 		return
 	}
 
+	expiry := time.Now().Add(24 * time.Hour).Unix()
+	http.SetCookie(w, &http.Cookie{
+		Name:     sessionCookie,
+		Value:    sign(s.HashKey, expiry),
+		Path:     "/",
+		Expires:  time.Unix(expiry, 0),
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+	})
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -70,14 +87,12 @@ func (s *Server) handleApiGetFlags(w http.ResponseWriter, req *http.Request) {
 
 	offset, err := strconv.Atoi(params.Get("start"))
 	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		return
+		offset = 0
 	}
 
 	count, err := strconv.Atoi(params.Get("count"))
 	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		return
+		count = 10
 	}
 
 	if count > 100 {
@@ -85,20 +100,13 @@ func (s *Server) handleApiGetFlags(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	flags, err := s.FlagService.GetTotPending(req.Context(), offset, count) // ([]Flag, err)
+	flags, err := s.FlagService.GetFlags(req.Context(), offset, count) // ([]Flag, err)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
-	toReturn := make([]string, 0, len(flags))
-	for _, fl := range flags {
-		if fl.Flag != "" {
-			toReturn = append(toReturn, fl.Flag)
-		}
-	}
-
-	js, err := json.Marshal(toReturn)
+	js, err := json.Marshal(flags)
 	if err != nil {
 		return
 	}
@@ -133,11 +141,16 @@ func (s *Server) handleApiFlags(w http.ResponseWriter, req *http.Request) {
 			continue
 		}
 
+		tm := fl.Ts
+		if tm == 0 {
+			tm = float64(time.Now().Unix())
+		}
+
 		err := s.FlagService.Create(req.Context(), &sqlite.Flag{
 			Flag:      fl.Flag,
 			Exploit:   exploit,
 			Status:    0, // TODO: imparare go e capire come fixare l'import
-			Timestamp: time.Now().Unix(),
+			Timestamp: tm,
 		})
 
 		if err != nil {
@@ -150,11 +163,53 @@ func (s *Server) handleApiFlags(w http.ResponseWriter, req *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
+func (s *Server) handlePage(name string) http.HandlerFunc {
+	return func(w http.ResponseWriter, req *http.Request) {
+		page, err := html.FS.ReadFile(name)
+		if err != nil {
+			log.Error(err)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Write(page)
+	}
+}
+
+func (s *Server) handleScript(w http.ResponseWriter, req *http.Request) {
+	w.Header().Set("Content-Type", "text/x-python")
+	w.Header().Set("Content-Disposition", `attachment; filename="start_sploit.py"`)
+	http.ServeFile(w, req, ScriptPath)
+}
+
+func (s *Server) requireAuth(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		c, err := req.Cookie(sessionCookie)
+		if err != nil || !valid(s.HashKey, c.Value) {
+			http.Redirect(w, req, "/auth", http.StatusSeeOther)
+			return
+		}
+		next.ServeHTTP(w, req)
+	})
+}
+
+func (s *Server) Logger(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		log.Info("-> %s %s", r.Method, r.URL.Path)
+
+		next.ServeHTTP(w, r)
+
+		log.Info("<- HTTP ", r.Response.Status)
+	})
+}
+
 func NewServer(cfg config.Config, flagService *sqlite.FlagService) (s *Server) {
 	s = &Server{
 		server:      &http.Server{},
 		router:      chi.NewRouter(),
 		Config:      cfg,
+		HashKey:     config.RandomHex(32),
 		FlagService: flagService,
 	}
 
@@ -162,10 +217,20 @@ func NewServer(cfg config.Config, flagService *sqlite.FlagService) (s *Server) {
 
 	router.Handle("/assets/*", http.StripPrefix("/assets/", http.FileServer(http.FS(assets.FS))))
 
-	router.Post("/api/flags/{exploit_name}", s.handleApiFlags)
-	router.Get("/api/flags", s.handleApiGetFlags)
-	router.Get("/api/config", s.handleApiConfig)
+	router.Get("/", s.handlePage("index.html"))
+	router.Get("/auth", s.handlePage("auth.html"))
 	router.Post("/api/auth", s.handleApiAuth)
+
+	router.Group(func(r chi.Router) {
+		r.Use(s.Logger)
+		r.Use(s.requireAuth)
+		r.Get("/", s.handlePage("index.html"))
+		r.Get("/api/flags", s.handleApiGetFlags)
+		r.Get("/api/config", s.handleApiConfig)
+		r.Post("/api/flags/{exploit_name}", s.handleApiFlags)
+		r.Put("/api/flags/{exploit_name}", s.handleApiFlags)
+		r.Get("/script", s.handleScript)
+	})
 
 	s.router.Mount("/", router)
 
@@ -174,7 +239,6 @@ func NewServer(cfg config.Config, flagService *sqlite.FlagService) (s *Server) {
 	return
 }
 
-// ListenAndServe binds the server to addr and starts serving requests.
 func (s *Server) ListenAndServe(addr string) error {
 	s.server.Addr = addr
 	return s.server.ListenAndServe()

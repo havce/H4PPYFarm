@@ -4,7 +4,7 @@ type Flag struct {
 	Flag                string
 	Exploit             string
 	Status              int
-	Timestamp           int64
+	Timestamp           float64
 	SubmissionTimestamp *int64
 	SystemMessage       *string
 }
@@ -17,4 +17,14 @@ var statusMap = map[string]int{
 	"DENIED":   4,
 	"RESUBMIT": 4,
 	"ERROR":    4,
+}
+
+// StatusFromString maps a ForcAD status string (e.g. "ACCEPTED",
+// "DENIED", "RESUBMIT", "ERROR", "UNKNOWN") to its internal integer
+// status. Unrecognized values fall back to UNKNOWN.
+func StatusFromString(status string) int {
+	if v, ok := statusMap[status]; ok {
+		return v
+	}
+	return statusMap["UNKNOWN"]
 }

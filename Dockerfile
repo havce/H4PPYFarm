@@ -19,12 +19,11 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 ENV PATH="/root/.cargo/bin:$PATH"
 RUN rustup target add x86_64-unknown-linux-musl
 
-RUN mkdir -p /server/static/files
 WORKDIR /server
 
 COPY --from=build /happyfarm /server/happyfarm
 COPY ./docker-scripts /docker-scripts
-COPY ./client/start_sploit.py /server/static/files/
+COPY ./client/start_sploit.py /server/client/
 COPY ./hfi /hfi-src
 
 ENTRYPOINT ["/server/happyfarm"]
