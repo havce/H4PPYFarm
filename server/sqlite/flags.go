@@ -5,18 +5,46 @@ import (
 	"database/sql"
 	"time"
 
+	"github.com/havce/H4ppyFarm/config"
 	"github.com/havce/H4ppyFarm/log"
 )
 
 type FlagService struct {
 	db *DB
 
-	batchLimit   int
-	flagLifeTime int64
+	cfg config.Config
 }
 
-func NewFlagService(db *DB, batchLimit int, flagLifeTime int64) *FlagService {
-	return &FlagService{db: db, batchLimit: batchLimit, flagLifeTime: flagLifeTime}
+func NewFlagService(db *DB, cfg config.Config) *FlagService {
+	return &FlagService{db: db, cfg: cfg}
+}
+
+func (flagService *FlagService) CheckExpired(ctx context.Context) {
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+
+	flagService.checkExpiredOnce(ctx)
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			flagService.checkExpiredOnce(ctx)
+		}
+	}
+}
+
+func (flagService *FlagService) checkExpiredOnce(ctx context.Context) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Error("recovered from panic in CheckExpired: ", r)
+		}
+	}()
+
+	if err := flagService.MarkExpired(ctx); err != nil {
+		log.Error("Errore nell'expire delle flag ", err)
+	}
 }
 
 func (db *DB) CreateSchema() error {
@@ -40,7 +68,7 @@ func timeToDate(timestamp int64) string {
 
 func (s *FlagService) MarkExpired(ctx context.Context) error {
 	now := time.Now().Unix()
-	expire_threshold := now - s.flagLifeTime
+	expire_threshold := now - int64(s.cfg.FlagLifetime)
 
 	log.Info("Expiring all flags older than ", timeToDate(expire_threshold))
 	_, err := s.db.db.ExecContext(
@@ -111,7 +139,7 @@ func (s *FlagService) GetPending(ctx context.Context) ([]Flag, error) {
 		  WHERE status = ?
 		  LIMIT ?`,
 		statusMap["PENDING"],
-		s.batchLimit,
+		s.cfg.BatchLimit,
 	)
 	if err != nil {
 		return nil, err

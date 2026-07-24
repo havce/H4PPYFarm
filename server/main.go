@@ -1,7 +1,11 @@
 package main
 
 import (
+	"context"
 	"fmt"
+	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/havce/H4ppyFarm/config"
 	nethttp "github.com/havce/H4ppyFarm/http"
@@ -23,7 +27,13 @@ func main() {
 	if err := db.CreateSchema(); err != nil {
 		log.Fatal(err)
 	}
-	flagService = sqlite.NewFlagService(db, cfg.BatchLimit, int64(cfg.FlagLifetime))
+	flagService = sqlite.NewFlagService(db, cfg)
+
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+
+	go flagService.CheckExpired(ctx)
+	go StartWorker(ctx)
 
 	server := nethttp.NewServer(cfg, flagService)
 

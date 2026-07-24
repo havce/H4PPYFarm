@@ -53,20 +53,5 @@ func (db *DB) Open() (err error) {
 		return fmt.Errorf("enable wal: %w", err)
 	}
 
-	go db.monitor()
-
 	return nil
-}
-
-func (db *DB) monitor() {
-	ticker := time.NewTicker(10 * time.Second)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-db.ctx.Done():
-			return
-		case <-ticker.C:
-		}
-	}
 }

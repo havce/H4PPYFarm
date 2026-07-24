@@ -100,3 +100,29 @@ func Send(ctx context.Context) {
 		log.Error(err)
 	}
 }
+
+func StartWorker(ctx context.Context) {
+	ticker := time.NewTicker(time.Duration(cfg.SubmitPeriod) * time.Second)
+	defer ticker.Stop()
+
+	sendOnce(ctx)
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			sendOnce(ctx)
+		}
+	}
+}
+
+func sendOnce(ctx context.Context) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Error("recovered from panic in worker Send: ", r)
+		}
+	}()
+
+	Send(ctx)
+}

@@ -17,7 +17,6 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-const ShutDownTimeout = time.Second * 5
 const ScriptPath = "./client/start_sploit.py"
 
 type Server struct {
